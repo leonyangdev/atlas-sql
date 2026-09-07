@@ -1,0 +1,72 @@
+[
+  {
+    "slug": "v0",
+    "name": "v0-foundation",
+    "title": "企业数据与工程基础",
+    "goal": "先建立真实、可复现、能暴露 NL2SQL 难题的数据环境。",
+    "pre": "无；先阅读项目总纲与本计划约定。",
+    "target": "7 个域、50～80 张表、600～1000 个字段；可生成百万级数据；100～150 道初始题。轻量数据仅用于开发自测，不替代阶段验收。",
+    "stories": 7,
+    "tasks": 27
+  },
+  {
+    "slug": "v1",
+    "name": "v1-baseline",
+    "title": "可测量的问数基线",
+    "goal": "限定 Sales 的 10～15 张表，跑通最小安全链路并发现真实失败。",
+    "pre": "V0 验收通过；选择并冻结 Sales 子集。",
+    "target": "形成可复现 Baseline 与失败分类；不预设准确率，不将示意百分比当实测。",
+    "stories": 5,
+    "tasks": 16
+  },
+  {
+    "slug": "v2",
+    "name": "v2-retrieval",
+    "title": "混合检索与 Schema Linking",
+    "goal": "从大 Schema 中找到正确的表、字段、值和合法关联路径。",
+    "pre": "V1 报告与 V0 全量元数据可用。",
+    "target": "原文目标：Domain Accuracy ≥98%、Table Recall@10 ≥97%、Column Recall ≥95%；本次约定列召回按最终上下文、macro 口径统计，必须随报告明确。",
+    "stories": 6,
+    "tasks": 19
+  },
+  {
+    "slug": "v3",
+    "name": "v3-semantics",
+    "title": "业务语义与可信查询",
+    "goal": "让“销售额怎么算”成为版本化业务资产，让生成 SQL 遵循统一口径。",
+    "pre": "V2 召回与链接接口稳定，V0 指标草案可评审。",
+    "target": "建立 30～50 个核心指标及累计 200+ Verified Queries（本次将最终数量目标安排于 V3），全部具有版本与审核证据。",
+    "stories": 6,
+    "tasks": 19
+  },
+  {
+    "slug": "v4",
+    "name": "v4-production",
+    "title": "企业级安全问数 1.0",
+    "goal": "把业务理解、查询计划、安全执行和结果验证组成可治理的生产候选系统。",
+    "pre": "V3 稳定语义与回归集；安全基线一直保留。",
+    "target": "完成 Enterprise NL2SQL 1.0 的验收与面试主线；“生产候选”仍需目标环境容量和安全验收。",
+    "stories": 6,
+    "tasks": 23
+  },
+  {
+    "slug": "v5",
+    "name": "v5-agent",
+    "title": "Agentic 数据分析师",
+    "goal": "复用 V4 受控能力，支持多步分析、多轮上下文与有预算的工具编排。",
+    "pre": "V4 验收完成，统一执行入口和策略不可绕过。",
+    "target": "复杂分析具有状态、证据、预算与停止条件；此阶段才引入 LangGraph。",
+    "stories": 5,
+    "tasks": 15
+  },
+  {
+    "slug": "v6",
+    "name": "v6-ops",
+    "title": "评测运营与持续演进",
+    "goal": "使每次模型、Prompt、检索和语义变更都能被评测、监控与回滚。",
+    "pre": "V5 可追踪工具链与历代评测产物可用。",
+    "target": "累计 500+ Benchmark 问题；版本比较、反馈闭环、CI 门禁、灰度与回滚可演练。",
+    "stories": 5,
+    "tasks": 17
+  }
+]

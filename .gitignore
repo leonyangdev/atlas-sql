@@ -1,0 +1,10 @@
+node_modules/
+altassql-book/.vitepress/cache/
+altassql-book/.vitepress/dist/
+altassql-book/.vitepress/generated/
+altassql-book/plan/
+altassql-book/reference/project.md
+.DS_Store
+.env
+.env.*
+!.env.example
