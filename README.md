@@ -1,8 +1,8 @@
 <div align="center">
 
-<h1>AtlasSQL</h1>
+<img src="./docs/assets/atlas-sql-banner.svg" alt="AtlasSQL — Enterprise-grade NL2SQL Data Intelligence Platform" width="100%" />
 
-<p><strong>企业级 NL2SQL 数据智能分析平台</strong></p>
+<h3>企业级 NL2SQL 数据智能分析平台</h3>
 
 <p>
   让业务人员用自然语言提问，经过语义理解、Schema 召回、指标口径解析与权限治理，<br>
