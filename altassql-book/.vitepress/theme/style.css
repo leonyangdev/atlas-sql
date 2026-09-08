@@ -35,8 +35,56 @@
 .task-list-item input { margin-right: 8px; accent-color: var(--vp-c-brand-1); }
 .reading-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .reading-grid > div { border-left: 3px solid var(--vp-c-brand-1); padding: 0 18px; background: var(--vp-c-bg-soft); }
+/* ── 首页 home-extra 区域 ───────────────────────────────────────────── */
+/* VitePress home layout 会把 frontmatter 之外的 markdown 渲染在 .VPHomeContent 里 */
+.VPHomeContent {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 24px 64px;
+}
+.VPHomeContent h2 {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 48px 0 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+}
+.VPHomeContent table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  margin: 16px 0;
+}
+.VPHomeContent th {
+  text-align: left;
+  padding: 8px 14px;
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  letter-spacing: .04em;
+}
+.VPHomeContent td {
+  padding: 10px 14px;
+  border: 1px solid var(--vp-c-divider);
+  line-height: 1.7;
+}
+.VPHomeContent td:first-child {
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+
+/* ── 侧边栏分组标题数字序号加色 ────────────────────────────────────── */
+.VPSidebarItem.level-0 > .item > .text {
+  font-weight: 700;
+}
+
 @media (max-width: 640px) {
   .phase-grid, .reading-grid { grid-template-columns: 1fr; }
   .phase-card { padding: 16px; }
   .vp-doc h1 { font-size: 28px; }
+  .VPHomeContent { padding: 0 16px 48px; }
 }

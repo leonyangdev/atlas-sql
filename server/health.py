@@ -92,7 +92,7 @@ class DependencyChecker:
     async def _redis(self) -> None:
         """发送 PING；兼容 Redis 客户端同步或异步返回形式。"""
 
-        client = redis.from_url(self.settings.redis_url.get_secret_value())
+        client = redis.from_url(self.settings.redis_url.get_secret_value())  # type: ignore[no-untyped-call]
         try:
             ping_result = client.ping()
             if inspect.isawaitable(ping_result):

@@ -1,0 +1,1345 @@
+##
+## Benchmark v1 — 训练集（60 题）
+## 数据版本：v0.1.0 / schema 001 / seed 20260908
+## 业务时钟：2026-06-30（数据截止，所有"今年/本期"相对此日期）
+## 用途：few-shot 示例、prompt 调优；全部可收录到 Verified Query Repository
+##
+
+dataset_version: v0.1.0
+schema_version: "001"
+seed: 20260908
+business_clock: "2026-06-30"
+split: train
+
+questions:
+
+  # ────────────────────────────────────────────────────────────────
+  # 单表查询（8 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-001
+    question: 查询所有门店的名称和类型
+    category: single_table
+    domain: store
+    required_tables: [dim_store]
+    required_columns: [store_name, store_type]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT store_name, store_type
+      FROM dim_store
+      WHERE is_current = true
+      ORDER BY store_name;
+    expected_row_count: 4
+    expected_result_checksum: ~
+    note: 维度表基础查询，验证 is_current 过滤
+
+  - id: train-002
+    question: 列出北区的所有城市
+    category: single_table
+    domain: store
+    required_tables: [dim_city, dim_region]
+    required_columns: [city_name, region_id]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT c.city_name
+      FROM dim_city c
+      JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+      WHERE r.region_code = 'NORTH'
+        AND c.is_current = true
+      ORDER BY c.city_name;
+    expected_row_count: 1
+    expected_result_checksum: ~
+
+  - id: train-003
+    question: 查询状态为有效的所有品牌
+    category: single_table
+    domain: product
+    required_tables: [dim_brand]
+    required_columns: [brand_name, status]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT brand_code, brand_name
+      FROM dim_brand
+      WHERE status = 'ACTIVE'
+        AND is_current = true
+      ORDER BY brand_name;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-004
+    question: 列出所有会员等级及其最低积分要求
+    category: single_table
+    domain: customer
+    required_tables: [dim_membership_tier]
+    required_columns: [tier_name, minimum_points, rank_order]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT tier_name, minimum_points, discount_rate
+      FROM dim_membership_tier
+      WHERE is_current = true
+      ORDER BY rank_order;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-005
+    question: 查询所有仓库及其城市
+    category: single_table
+    domain: store
+    required_tables: [dim_warehouse, dim_city]
+    required_columns: [warehouse_name, city_id]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT w.warehouse_code, w.warehouse_name, c.city_name
+      FROM dim_warehouse w
+      JOIN dim_city c ON w.city_id = c.id AND c.is_current = true
+      WHERE w.is_current = true
+      ORDER BY w.warehouse_name;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-006
+    question: 查询商品编码 "PROD-APPLE-001" 的所有 SKU
+    category: single_table
+    domain: product
+    required_tables: [dim_sku, dim_product]
+    required_columns: [sku_code, color_name, size_name, list_price]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT s.sku_code, s.color_name, s.size_name, s.list_price
+      FROM dim_sku s
+      JOIN dim_product p ON s.product_id = p.id AND p.is_current = true
+      WHERE p.product_code = 'PROD-APPLE-001'
+        AND s.is_current = true
+      ORDER BY s.sku_code;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-007
+    question: 取消订单的数量是多少
+    category: single_table
+    domain: sales
+    required_tables: [fact_order]
+    required_columns: [order_status]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT COUNT(*) AS cancelled_order_count
+      FROM fact_order
+      WHERE order_status = 'CANCELLED'
+        AND is_test = false;
+    expected_row_count: 1
+    expected_result_checksum: ~
+
+  - id: train-008
+    question: 查询当前活跃客户的总数
+    category: single_table
+    domain: customer
+    required_tables: [dim_customer]
+    required_columns: [status]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT COUNT(*) AS active_customer_count
+      FROM dim_customer
+      WHERE status = 'ACTIVE'
+        AND is_current = true;
+    expected_row_count: 1
+    expected_result_checksum: ~
+
+  # ────────────────────────────────────────────────────────────────
+  # 多表 Join（10 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-009
+    question: 列出每个门店的名称、所在城市和区域
+    category: join
+    domain: store
+    required_tables: [dim_store, dim_city, dim_region]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT s.store_name, c.city_name, r.region_name
+      FROM dim_store s
+      JOIN dim_city c ON s.city_id = c.id AND c.is_current = true
+      JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+      WHERE s.is_current = true
+      ORDER BY s.store_name;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-010
+    question: 查询订单号 "ORD-0001" 的明细，包括商品名称和金额
+    category: join
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_sku, dim_product]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT p.product_name, s.sku_code, oi.quantity, oi.net_amount
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_sku s ON oi.sku_id = s.id AND s.is_current = true
+      JOIN dim_product p ON s.product_id = p.id AND p.is_current = true
+      WHERE o.order_no = 'ORD-0001'
+        AND o.is_test = false
+      ORDER BY oi.line_no;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-011
+    question: 查询每位客户的会员等级名称
+    category: join
+    domain: customer
+    required_tables: [dim_customer, customer_membership_history, dim_membership_tier]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.customer_code, t.tier_name
+      FROM dim_customer c
+      JOIN customer_membership_history h
+        ON h.customer_id = c.id
+        AND h.is_current = true
+      JOIN dim_membership_tier t ON h.tier_id = t.id AND t.is_current = true
+      WHERE c.is_current = true
+      ORDER BY c.customer_code;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-012
+    question: 查询 Apple 品牌在本数据集中所有的销售记录数量
+    category: join
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_sku, dim_product, dim_brand]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT COUNT(DISTINCT o.id) AS order_count,
+             COUNT(oi.id) AS order_item_count
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_sku s ON oi.sku_id = s.id AND s.is_current = true
+      JOIN dim_product p ON s.product_id = p.id AND p.is_current = true
+      JOIN dim_brand b ON p.brand_id = b.id AND b.is_current = true
+      WHERE b.brand_name = 'Apple'
+        AND o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    note: 值映射：Apple（英文品牌名）
+
+  - id: train-013
+    question: 列出所有退款订单的退款金额和原订单金额
+    category: join
+    domain: sales
+    required_tables: [fact_order, fact_refund, fact_refund_item]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT o.order_no, o.order_amount, SUM(ri.refund_amount) AS refunded_amount
+      FROM fact_order o
+      JOIN fact_refund r ON r.order_id = o.id AND r.refund_status = 'REFUNDED'
+      JOIN fact_refund_item ri ON ri.refund_id = r.id
+      WHERE o.is_test = false
+      GROUP BY o.id, o.order_no, o.order_amount
+      ORDER BY o.order_no;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    note: 退款 Join，测试 Join 放大意识
+
+  - id: train-014
+    question: 查询每个营销活动的名称、渠道和已花费金额
+    category: join
+    domain: marketing
+    required_tables: [dim_campaign, dim_marketing_channel, fact_marketing_spend]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.campaign_name, ch.channel_name,
+             COALESCE(SUM(s.spend_amount), 0) AS total_spend
+      FROM dim_campaign c
+      LEFT JOIN dim_marketing_channel ch
+        ON c.channel_id = ch.id AND ch.is_current = true
+      LEFT JOIN fact_marketing_spend s ON s.campaign_id = c.id
+      WHERE c.is_current = true
+      GROUP BY c.id, c.campaign_name, ch.channel_name
+      ORDER BY total_spend DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-015
+    question: 查询每个仓库、每个 SKU 在最新快照日期的可用库存
+    category: join
+    domain: inventory
+    required_tables: [fact_inventory_snapshot, dim_warehouse, dim_sku]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT w.warehouse_name, sk.sku_code, s.available_quantity, s.snapshot_date
+      FROM fact_inventory_snapshot s
+      JOIN dim_warehouse w ON s.warehouse_id = w.id AND w.is_current = true
+      JOIN dim_sku sk ON s.sku_id = sk.id AND sk.is_current = true
+      WHERE s.snapshot_date = (
+          SELECT MAX(s2.snapshot_date)
+          FROM fact_inventory_snapshot s2
+      )
+      ORDER BY w.warehouse_name, sk.sku_code;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    note: 快照表不能跨日直接求和，必须取最新快照
+
+  - id: train-016
+    question: 查询每个城市的线上销售额（仅线上渠道）
+    category: join
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store, dim_city, dim_sales_channel]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.city_name, SUM(oi.net_amount) AS online_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_sales_channel ch ON o.channel_id = ch.id AND ch.is_current = true
+      JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+      JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND ch.is_online = true
+      GROUP BY c.id, c.city_name
+      ORDER BY online_sales DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-017
+    question: 查询持有 VIP 标签的客户总数
+    category: join
+    domain: customer
+    required_tables: [dim_customer, bridge_customer_tag, dim_customer_tag]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT COUNT(DISTINCT c.id) AS vip_customer_count
+      FROM dim_customer c
+      JOIN bridge_customer_tag bt ON bt.customer_id = c.id
+        AND (bt.expired_at IS NULL OR bt.expired_at > '2026-06-30')
+      JOIN dim_customer_tag t ON bt.tag_id = t.id
+        AND t.is_current = true
+        AND t.tag_code = 'VIP'
+      WHERE c.is_current = true
+        AND c.status = 'ACTIVE';
+    expected_row_count: 1
+    expected_result_checksum: ~
+    note: 多对多桥表，测试有效期过滤
+
+  - id: train-018
+    question: 查询每个品类下的在售商品数量
+    category: join
+    domain: product
+    required_tables: [dim_product, dim_category, product_category_history]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT cat.category_name, COUNT(DISTINCT p.id) AS product_count
+      FROM dim_product p
+      JOIN product_category_history pch ON pch.product_id = p.id
+        AND pch.is_primary = true
+        AND (pch.valid_to_date IS NULL OR pch.valid_to_date > '2026-06-30')
+      JOIN dim_category cat ON pch.category_id = cat.id AND cat.is_current = true
+      WHERE p.product_status = 'ACTIVE'
+        AND p.is_current = true
+      GROUP BY cat.id, cat.category_name
+      ORDER BY product_count DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  # ────────────────────────────────────────────────────────────────
+  # 聚合 & 分组（8 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-019
+    question: 各门店的总销售额是多少，按销售额从高到低排列
+    category: aggregation
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT st.store_name, SUM(oi.net_amount) AS net_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+      GROUP BY st.id, st.store_name
+      ORDER BY net_sales DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-020
+    question: 每个区域的有效订单量是多少
+    category: aggregation
+    domain: sales
+    required_tables: [fact_order, dim_store, dim_city, dim_region]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT r.region_name, COUNT(DISTINCT o.id) AS paid_order_count
+      FROM fact_order o
+      JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+      JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+      JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+      GROUP BY r.id, r.region_name
+      ORDER BY paid_order_count DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [paid_order_count]
+
+  - id: train-021
+    question: 每个品类的平均客单价是多少
+    category: aggregation
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_sku, dim_product, product_category_history, dim_category]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      SELECT cat.category_name,
+             SUM(oi.net_amount) / NULLIF(COUNT(DISTINCT o.id), 0) AS aov
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_sku s ON oi.sku_id = s.id AND s.is_current = true
+      JOIN dim_product p ON s.product_id = p.id AND p.is_current = true
+      JOIN product_category_history pch
+        ON pch.product_id = p.id AND pch.is_primary = true
+        AND (pch.valid_to_date IS NULL OR pch.valid_to_date > '2026-06-30')
+      JOIN dim_category cat ON pch.category_id = cat.id AND cat.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+      GROUP BY cat.id, cat.category_name
+      ORDER BY aov DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [average_order_value]
+
+  - id: train-022
+    question: 统计每种支付方式的使用次数
+    category: aggregation
+    domain: sales
+    required_tables: [fact_payment, fact_order]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT p.payment_method, COUNT(*) AS payment_count
+      FROM fact_payment p
+      JOIN fact_order o ON p.order_id = o.id
+      WHERE p.payment_status = 'SUCCEEDED'
+        AND o.is_test = false
+      GROUP BY p.payment_method
+      ORDER BY payment_count DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-023
+    question: 数据集中 2025 年的总销售额是多少
+    category: aggregation
+    domain: sales
+    required_tables: [fact_order, fact_order_item]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT SUM(oi.net_amount) AS net_sales_2025
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.paid_at >= '2025-01-01'
+        AND o.paid_at < '2026-01-01';
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-024
+    question: 每个月的新客户数量（按首次有效支付时间）
+    category: aggregation
+    domain: customer
+    required_tables: [fact_order, dim_customer]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      WITH first_purchase AS (
+          SELECT o.customer_id,
+                 MIN(o.paid_at) AS first_paid_at
+          FROM fact_order o
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.customer_id IS NOT NULL
+          GROUP BY o.customer_id
+      )
+      SELECT DATE_TRUNC('month', first_paid_at) AS month,
+             COUNT(*) AS new_customers
+      FROM first_purchase
+      GROUP BY DATE_TRUNC('month', first_paid_at)
+      ORDER BY month;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [new_customer_count]
+
+  - id: train-025
+    question: 每个 SKU 的退款率是多少（按退款金额除以销售金额）
+    category: aggregation
+    domain: sales
+    required_tables: [fact_order, fact_order_item, fact_refund, fact_refund_item, dim_sku]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH sales AS (
+          SELECT oi.sku_id, SUM(oi.net_amount) AS total_sales
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          WHERE o.order_status IN ('PAID', 'COMPLETED') AND o.is_test = false
+          GROUP BY oi.sku_id
+      ),
+      refunds AS (
+          SELECT oi.sku_id, SUM(ri.refund_amount) AS total_refunded
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          JOIN fact_refund r ON r.order_id = o.id AND r.refund_status = 'REFUNDED'
+          JOIN fact_refund_item ri ON ri.refund_id = r.id AND ri.order_item_id = oi.id
+          WHERE o.is_test = false
+          GROUP BY oi.sku_id
+      )
+      SELECT sk.sku_code,
+             ROUND(COALESCE(rf.total_refunded, 0) / NULLIF(s.total_sales, 0), 4) AS refund_rate
+      FROM sales s
+      LEFT JOIN refunds rf ON rf.sku_id = s.sku_id
+      JOIN dim_sku sk ON sk.id = s.sku_id AND sk.is_current = true
+      ORDER BY refund_rate DESC NULLS LAST;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [refund_rate]
+    note: 退款 Join 容易产生放大，必须按 order_item_id 关联
+
+  - id: train-026
+    question: 各城市的平均库存可用量（基于最新快照）
+    category: aggregation
+    domain: inventory
+    required_tables: [fact_inventory_snapshot, dim_warehouse, dim_city]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.city_name,
+             SUM(s.available_quantity) AS total_available,
+             AVG(s.available_quantity) AS avg_available_per_sku_warehouse
+      FROM fact_inventory_snapshot s
+      JOIN dim_warehouse w ON s.warehouse_id = w.id AND w.is_current = true
+      JOIN dim_city c ON w.city_id = c.id AND c.is_current = true
+      WHERE s.snapshot_date = (SELECT MAX(s2.snapshot_date) FROM fact_inventory_snapshot s2)
+      GROUP BY c.id, c.city_name
+      ORDER BY total_available DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [inventory_available_quantity]
+
+  # ────────────────────────────────────────────────────────────────
+  # Top N & 排名（6 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-027
+    question: 销售额最高的 5 个城市
+    category: top_n
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store, dim_city]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.city_name, SUM(oi.net_amount) AS net_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+      JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+      GROUP BY c.id, c.city_name
+      ORDER BY net_sales DESC
+      LIMIT 5;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+
+  - id: train-028
+    question: 订单量最多的 3 个销售渠道
+    category: top_n
+    domain: sales
+    required_tables: [fact_order, dim_sales_channel]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT ch.channel_name, COUNT(DISTINCT o.id) AS order_count
+      FROM fact_order o
+      JOIN dim_sales_channel ch ON o.channel_id = ch.id AND ch.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+      GROUP BY ch.id, ch.channel_name
+      ORDER BY order_count DESC
+      LIMIT 3;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+
+  - id: train-029
+    question: 退款金额最高的 5 个 SKU
+    category: top_n
+    domain: sales
+    required_tables: [fact_refund, fact_refund_item, dim_sku]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT sk.sku_code, SUM(ri.refund_amount) AS total_refunded
+      FROM fact_refund r
+      JOIN fact_refund_item ri ON ri.refund_id = r.id
+      JOIN dim_sku sk ON ri.sku_id = sk.id AND sk.is_current = true
+      WHERE r.refund_status = 'REFUNDED'
+      GROUP BY sk.id, sk.sku_code
+      ORDER BY total_refunded DESC
+      LIMIT 5;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+
+  - id: train-030
+    question: 消费最高的 10 位客户
+    category: top_n
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_customer]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.customer_code, SUM(oi.net_amount) AS total_spent
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_customer c ON o.customer_id = c.id AND c.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.customer_id IS NOT NULL
+      GROUP BY c.id, c.customer_code
+      ORDER BY total_spent DESC
+      LIMIT 10;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+    note: 客户相关字段为 confidential，不返回真实姓名
+
+  - id: train-031
+    question: 库存量最少的 5 个 SKU（最新快照）
+    category: top_n
+    domain: inventory
+    required_tables: [fact_inventory_snapshot, dim_sku]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT sk.sku_code, SUM(s.available_quantity) AS total_available
+      FROM fact_inventory_snapshot s
+      JOIN dim_sku sk ON s.sku_id = sk.id AND sk.is_current = true
+      WHERE s.snapshot_date = (SELECT MAX(s2.snapshot_date) FROM fact_inventory_snapshot s2)
+      GROUP BY sk.id, sk.sku_code
+      ORDER BY total_available ASC
+      LIMIT 5;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+
+  - id: train-032
+    question: 最近 30 天参与活动的客户人数最多的活动 Top 3
+    category: top_n
+    domain: marketing
+    required_tables: [dim_campaign, fact_campaign_touch]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.campaign_name, COUNT(DISTINCT t.customer_id) AS touched_customers
+      FROM dim_campaign c
+      JOIN fact_campaign_touch t ON t.campaign_id = c.id
+      WHERE t.touched_at >= '2026-06-01'
+        AND t.touched_at < '2026-07-01'
+      GROUP BY c.id, c.campaign_name
+      ORDER BY touched_customers DESC
+      LIMIT 3;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    is_ordered: true
+
+  # ────────────────────────────────────────────────────────────────
+  # 时间查询（10 题）：单期 / 同比 / 环比
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-033
+    question: 2026 年上半年（1-6月）的总销售额
+    category: time
+    domain: sales
+    required_tables: [fact_order, fact_order_item]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT SUM(oi.net_amount) AS net_sales_h1_2026
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.paid_at >= '2026-01-01'
+        AND o.paid_at < '2026-07-01';
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-034
+    question: 2026 年每个月的有效订单量
+    category: time
+    domain: sales
+    required_tables: [fact_order]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT DATE_TRUNC('month', paid_at) AS month,
+             COUNT(DISTINCT id) AS paid_order_count
+      FROM fact_order
+      WHERE order_status IN ('PAID', 'COMPLETED')
+        AND is_test = false
+        AND paid_at >= '2026-01-01'
+        AND paid_at < '2026-07-01'
+      GROUP BY DATE_TRUNC('month', paid_at)
+      ORDER BY month;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [paid_order_count]
+
+  - id: train-035
+    question: 2025 年和 2026 年上半年的销售额对比（同比）
+    category: time_yoy
+    domain: sales
+    required_tables: [fact_order, fact_order_item]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT
+        SUM(CASE WHEN o.paid_at >= '2025-01-01' AND o.paid_at < '2025-07-01'
+                 THEN oi.net_amount ELSE 0 END) AS net_sales_h1_2025,
+        SUM(CASE WHEN o.paid_at >= '2026-01-01' AND o.paid_at < '2026-07-01'
+                 THEN oi.net_amount ELSE 0 END) AS net_sales_h1_2026,
+        ROUND(
+          (SUM(CASE WHEN o.paid_at >= '2026-01-01' AND o.paid_at < '2026-07-01'
+                    THEN oi.net_amount ELSE 0 END) -
+           SUM(CASE WHEN o.paid_at >= '2025-01-01' AND o.paid_at < '2025-07-01'
+                    THEN oi.net_amount ELSE 0 END)) /
+          NULLIF(SUM(CASE WHEN o.paid_at >= '2025-01-01' AND o.paid_at < '2025-07-01'
+                          THEN oi.net_amount ELSE 0 END), 0),
+          4
+        ) AS yoy_growth_rate
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.paid_at >= '2025-01-01'
+        AND o.paid_at < '2026-07-01';
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-036
+    question: 2026 年 5 月和 6 月的订单量对比（环比）
+    category: time_mom
+    domain: sales
+    required_tables: [fact_order]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT
+        COUNT(CASE WHEN paid_at >= '2026-05-01' AND paid_at < '2026-06-01' THEN id END) AS may_orders,
+        COUNT(CASE WHEN paid_at >= '2026-06-01' AND paid_at < '2026-07-01' THEN id END) AS jun_orders
+      FROM fact_order
+      WHERE order_status IN ('PAID', 'COMPLETED')
+        AND is_test = false
+        AND paid_at >= '2026-05-01'
+        AND paid_at < '2026-07-01';
+    expected_row_count: 1
+    expected_result_checksum: ~
+
+  - id: train-037
+    question: 今年各季度的销售额（2026 年）
+    category: time
+    domain: sales
+    required_tables: [fact_order, fact_order_item]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT DATE_TRUNC('quarter', o.paid_at) AS quarter,
+             SUM(oi.net_amount) AS net_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.paid_at >= '2026-01-01'
+        AND o.paid_at < '2026-07-01'
+      GROUP BY DATE_TRUNC('quarter', o.paid_at)
+      ORDER BY quarter;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-038
+    question: 2026 年第一季度北区销售额同比 2025 年第一季度的增长率
+    category: time_yoy
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store, dim_city, dim_region]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH regional_sales AS (
+          SELECT
+            EXTRACT(YEAR FROM o.paid_at) AS yr,
+            SUM(oi.net_amount) AS net_sales
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+          JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+          JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND r.region_code = 'NORTH'
+            AND ((o.paid_at >= '2025-01-01' AND o.paid_at < '2025-04-01')
+              OR (o.paid_at >= '2026-01-01' AND o.paid_at < '2026-04-01'))
+          GROUP BY EXTRACT(YEAR FROM o.paid_at)
+      )
+      SELECT
+        MAX(CASE WHEN yr = 2025 THEN net_sales END) AS q1_2025,
+        MAX(CASE WHEN yr = 2026 THEN net_sales END) AS q1_2026,
+        ROUND(
+          (MAX(CASE WHEN yr = 2026 THEN net_sales END) -
+           MAX(CASE WHEN yr = 2025 THEN net_sales END)) /
+          NULLIF(MAX(CASE WHEN yr = 2025 THEN net_sales END), 0),
+          4
+        ) AS yoy_growth
+      FROM regional_sales;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-039
+    question: 2026 年每周的退款金额趋势
+    category: time
+    domain: sales
+    required_tables: [fact_refund, fact_refund_item]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT DATE_TRUNC('week', r.refunded_at) AS week_start,
+             SUM(ri.refund_amount) AS refunded_amount
+      FROM fact_refund r
+      JOIN fact_refund_item ri ON ri.refund_id = r.id
+      WHERE r.refund_status = 'REFUNDED'
+        AND r.refunded_at >= '2026-01-01'
+        AND r.refunded_at < '2026-07-01'
+      GROUP BY DATE_TRUNC('week', r.refunded_at)
+      ORDER BY week_start;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [refunded_amount]
+
+  - id: train-040
+    question: 哪些客户在 2025 年购买但 2026 年未购买（流失客户）
+    category: time
+    domain: customer
+    required_tables: [fact_order, dim_customer]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      SELECT c.customer_code
+      FROM dim_customer c
+      WHERE EXISTS (
+          SELECT 1 FROM fact_order o
+          WHERE o.customer_id = c.id
+            AND o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.paid_at >= '2025-01-01'
+            AND o.paid_at < '2026-01-01'
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM fact_order o
+          WHERE o.customer_id = c.id
+            AND o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.paid_at >= '2026-01-01'
+            AND o.paid_at < '2026-07-01'
+      )
+      AND c.is_current = true
+      ORDER BY c.customer_code;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-041
+    question: 2026 年每月同比 2025 年的新客户增长数量
+    category: time_yoy
+    domain: customer
+    required_tables: [fact_order, dim_customer]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH first_purchase AS (
+          SELECT customer_id, MIN(paid_at) AS first_paid_at
+          FROM fact_order
+          WHERE order_status IN ('PAID', 'COMPLETED')
+            AND is_test = false
+            AND customer_id IS NOT NULL
+          GROUP BY customer_id
+      ),
+      monthly AS (
+          SELECT DATE_TRUNC('month', first_paid_at) AS month, COUNT(*) AS new_customers
+          FROM first_purchase
+          WHERE first_paid_at >= '2025-01-01' AND first_paid_at < '2026-07-01'
+          GROUP BY DATE_TRUNC('month', first_paid_at)
+      )
+      SELECT
+        m26.month AS month_2026,
+        m26.new_customers AS new_2026,
+        m25.new_customers AS new_2025,
+        (m26.new_customers - COALESCE(m25.new_customers, 0)) AS yoy_change
+      FROM monthly m26
+      LEFT JOIN monthly m25
+        ON DATE_TRUNC('month', m25.month + interval '1 year') = m26.month
+      WHERE m26.month >= '2026-01-01'
+      ORDER BY m26.month;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [new_customer_count]
+
+  - id: train-042
+    question: 查询 2026 年 6 月门店日历中营业天数超过 25 天的门店
+    category: time
+    domain: store
+    required_tables: [store_operating_calendar, dim_store]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT s.store_name, COUNT(*) AS open_days
+      FROM store_operating_calendar cal
+      JOIN dim_store s ON cal.store_id = s.id AND s.is_current = true
+      WHERE cal.is_open = true
+        AND cal.calendar_date >= '2026-06-01'
+        AND cal.calendar_date < '2026-07-01'
+      GROUP BY s.id, s.store_name
+      HAVING COUNT(*) > 25
+      ORDER BY open_days DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  # ────────────────────────────────────────────────────────────────
+  # 值映射（中英文 / 编码 / 别名）（4 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-043
+    question: 苹果手机的销售额是多少
+    category: value_mapping
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_sku, dim_product, dim_brand, dim_category]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT SUM(oi.net_amount) AS net_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_sku s ON oi.sku_id = s.id AND s.is_current = true
+      JOIN dim_product p ON s.product_id = p.id AND p.is_current = true
+      JOIN dim_brand b ON p.brand_id = b.id AND b.is_current = true
+      JOIN product_category_history pch
+        ON pch.product_id = p.id AND pch.is_primary = true
+        AND (pch.valid_to_date IS NULL OR pch.valid_to_date > '2026-06-30')
+      JOIN dim_category cat ON pch.category_id = cat.id AND cat.is_current = true
+      WHERE b.brand_name = 'Apple'
+        AND (cat.category_name ILIKE '%手机%' OR cat.category_name ILIKE '%phone%'
+             OR cat.category_name ILIKE '%smartphone%')
+        AND o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    note: '"苹果"→ brand_name=Apple；"手机"→ 品类名称含 phone/smartphone'
+
+  - id: train-044
+    question: VIP 客户的客单价与普通客户相比差多少
+    category: value_mapping
+    domain: customer
+    required_tables: [fact_order, fact_order_item, dim_customer, bridge_customer_tag, dim_customer_tag]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH customer_aov AS (
+          SELECT
+            o.customer_id,
+            SUM(oi.net_amount) / NULLIF(COUNT(DISTINCT o.id), 0) AS aov
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.customer_id IS NOT NULL
+          GROUP BY o.customer_id
+      ),
+      vip_flag AS (
+          SELECT DISTINCT bt.customer_id, true AS is_vip
+          FROM bridge_customer_tag bt
+          JOIN dim_customer_tag t ON bt.tag_id = t.id
+            AND t.is_current = true
+            AND t.tag_code = 'VIP'
+          WHERE (bt.expired_at IS NULL OR bt.expired_at > '2026-06-30')
+      )
+      SELECT
+        AVG(CASE WHEN v.is_vip THEN a.aov END) AS vip_aov,
+        AVG(CASE WHEN v.is_vip IS NULL THEN a.aov END) AS non_vip_aov
+      FROM customer_aov a
+      LEFT JOIN vip_flag v ON v.customer_id = a.customer_id;
+    expected_row_count: 1
+    expected_result_checksum: ~
+
+  - id: train-045
+    question: 优惠券代码 "COUPON-2026-001" 的使用次数
+    category: value_mapping
+    domain: marketing
+    required_tables: [dim_coupon, fact_coupon_redemption, order_coupon_bridge]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.coupon_code, COUNT(*) AS redemption_count
+      FROM dim_coupon c
+      JOIN order_coupon_bridge ocb ON ocb.coupon_id = c.id
+      WHERE c.coupon_code = 'COUPON-2026-001'
+        AND c.is_current = true
+      GROUP BY c.coupon_code;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  - id: train-046
+    question: 查询旗舰店（FLAGSHIP）类型的门店数量
+    category: value_mapping
+    domain: store
+    required_tables: [dim_store]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT COUNT(*) AS flagship_count
+      FROM dim_store
+      WHERE store_type = 'FLAGSHIP'
+        AND is_current = true;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    note: '"旗舰店"→ store_type=FLAGSHIP（内部枚举值）'
+
+  # ────────────────────────────────────────────────────────────────
+  # 指标语义（依赖 core_metrics.yaml）（6 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-047
+    question: 计算 2026 年上半年北区的毛利率
+    category: metric
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store, dim_city, dim_region,
+                      fact_refund, fact_refund_item, fact_cost_ledger]
+    difficulty: hard
+    identity: restricted
+    gold_sql: |
+      -- 毛利率 = (net_sales - recognized_cost) / net_sales
+      -- 成本来自 fact_cost_ledger，敏感字段需要 restricted 权限
+      WITH period_sales AS (
+          SELECT oi.id AS item_id, oi.net_amount,
+                 o.store_id, o.order_status, o.is_test, o.paid_at
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.paid_at >= '2026-01-01'
+            AND o.paid_at < '2026-07-01'
+      ),
+      north_sales AS (
+          SELECT ps.net_amount
+          FROM period_sales ps
+          JOIN dim_store st ON st.id = ps.store_id AND st.is_current = true
+          JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+          JOIN dim_region r ON c.region_id = r.id
+            AND r.is_current = true AND r.region_code = 'NORTH'
+      ),
+      north_cost AS (
+          SELECT SUM(cl.amount) AS total_cost
+          FROM fact_cost_ledger cl
+          JOIN dim_cost_center cc ON cl.cost_center_id = cc.id AND cc.is_current = true
+          JOIN dim_region r ON cc.region_id = r.id
+            AND r.is_current = true AND r.region_code = 'NORTH'
+          WHERE cl.ledger_date >= '2026-01-01'
+            AND cl.ledger_date < '2026-07-01'
+      )
+      SELECT
+        SUM(ns.net_amount) AS net_sales,
+        (SELECT total_cost FROM north_cost) AS recognized_cost,
+        ROUND(
+          1.0 - (SELECT total_cost FROM north_cost) / NULLIF(SUM(ns.net_amount), 0),
+          4
+        ) AS gross_margin_rate
+      FROM north_sales ns;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [gross_margin_rate, net_sales, gross_profit]
+    note: 毛利率查询需要 restricted 权限；不展示成本明细
+
+  - id: train-048
+    question: 数据集里每个客户的总消费额（净销售额口径）
+    category: metric
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_customer]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT c.customer_code, SUM(oi.net_amount) AS net_sales_per_customer
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_customer c ON o.customer_id = c.id AND c.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND o.customer_id IS NOT NULL
+      GROUP BY c.id, c.customer_code
+      ORDER BY net_sales_per_customer DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [net_sales]
+
+  - id: train-049
+    question: 查询整个数据集的客单价
+    category: metric
+    domain: sales
+    required_tables: [fact_order, fact_order_item]
+    difficulty: easy
+    identity: public
+    gold_sql: |
+      SELECT
+        SUM(oi.net_amount) AS net_sales,
+        COUNT(DISTINCT o.id) AS paid_order_count,
+        SUM(oi.net_amount) / NULLIF(COUNT(DISTINCT o.id), 0) AS aov
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false;
+    expected_row_count: 1
+    expected_result_checksum: ~
+    metric_ids: [average_order_value, net_sales, paid_order_count]
+
+  - id: train-050
+    question: 2026 年各月的退款率趋势
+    category: metric
+    domain: sales
+    required_tables: [fact_order, fact_order_item, fact_refund, fact_refund_item]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH monthly_sales AS (
+          SELECT DATE_TRUNC('month', o.paid_at) AS month,
+                 SUM(oi.net_amount) AS gross_paid_sales
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.paid_at >= '2026-01-01'
+            AND o.paid_at < '2026-07-01'
+          GROUP BY DATE_TRUNC('month', o.paid_at)
+      ),
+      monthly_refunds AS (
+          SELECT DATE_TRUNC('month', r.refunded_at) AS month,
+                 SUM(ri.refund_amount) AS refunded_amount
+          FROM fact_refund r
+          JOIN fact_refund_item ri ON ri.refund_id = r.id
+          WHERE r.refund_status = 'REFUNDED'
+            AND r.refunded_at >= '2026-01-01'
+            AND r.refunded_at < '2026-07-01'
+          GROUP BY DATE_TRUNC('month', r.refunded_at)
+      )
+      SELECT
+        s.month,
+        s.gross_paid_sales,
+        COALESCE(rf.refunded_amount, 0) AS refunded_amount,
+        ROUND(COALESCE(rf.refunded_amount, 0) / NULLIF(s.gross_paid_sales, 0), 4) AS refund_rate
+      FROM monthly_sales s
+      LEFT JOIN monthly_refunds rf ON rf.month = s.month
+      ORDER BY s.month;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [refund_rate]
+
+  - id: train-051
+    question: 每个区域 2026 年上半年的可用库存总量
+    category: metric
+    domain: inventory
+    required_tables: [fact_inventory_snapshot, dim_warehouse, dim_city, dim_region]
+    difficulty: medium
+    identity: public
+    gold_sql: |
+      SELECT r.region_name, SUM(s.available_quantity) AS total_available
+      FROM fact_inventory_snapshot s
+      JOIN dim_warehouse w ON s.warehouse_id = w.id AND w.is_current = true
+      JOIN dim_city c ON w.city_id = c.id AND c.is_current = true
+      JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+      WHERE s.snapshot_date = (SELECT MAX(s2.snapshot_date) FROM fact_inventory_snapshot s2)
+      GROUP BY r.id, r.region_name
+      ORDER BY total_available DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    metric_ids: [inventory_available_quantity]
+
+  - id: train-052
+    question: 哪些商品的销售量超过了门店目标的 110%
+    category: metric
+    domain: sales
+    required_tables: [fact_order, fact_order_item, store_target, dim_sku, dim_store]
+    difficulty: hard
+    identity: public
+    gold_sql: |
+      WITH actual_sales AS (
+          SELECT o.store_id,
+                 DATE_TRUNC('month', o.paid_at) AS month,
+                 SUM(oi.net_amount) AS actual_amount
+          FROM fact_order o
+          JOIN fact_order_item oi ON oi.order_id = o.id
+          WHERE o.order_status IN ('PAID', 'COMPLETED')
+            AND o.is_test = false
+            AND o.paid_at >= '2026-01-01'
+            AND o.paid_at < '2026-07-01'
+          GROUP BY o.store_id, DATE_TRUNC('month', o.paid_at)
+      )
+      SELECT st.store_name, a.month,
+             a.actual_amount, t.target_value,
+             ROUND(a.actual_amount / NULLIF(t.target_value, 0), 4) AS attainment_rate
+      FROM actual_sales a
+      JOIN store_target t
+        ON t.store_id = a.store_id
+        AND t.target_month = a.month
+        AND t.metric_code = 'NET_SALES'
+      JOIN dim_store st ON a.store_id = st.id AND st.is_current = true
+      WHERE a.actual_amount > t.target_value * 1.1
+      ORDER BY attainment_rate DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+
+  # ────────────────────────────────────────────────────────────────
+  # 歧义 / 澄清拒绝（4 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-053
+    question: 今年表现怎么样
+    category: ambiguous
+    domain: ~
+    required_tables: []
+    difficulty: medium
+    identity: public
+    gold_sql: ~
+    expected_action: clarify
+    clarification_hint: "需要明确：查看哪个指标？销售额、订单量、毛利率还是客户增长？哪个业务域？"
+
+  - id: train-054
+    question: 销售额下降了吗
+    category: ambiguous
+    domain: ~
+    required_tables: []
+    difficulty: medium
+    identity: public
+    gold_sql: ~
+    expected_action: clarify
+    clarification_hint: "需要明确：与哪个期间相比？哪个区域、门店还是全国？"
+
+  - id: train-055
+    question: 哪个产品最好
+    category: ambiguous
+    domain: ~
+    required_tables: []
+    difficulty: easy
+    identity: public
+    gold_sql: ~
+    expected_action: clarify
+    clarification_hint: "需要明确：最好的定义是销量最高、销售额最大还是毛利率最高？"
+
+  - id: train-056
+    question: 删除所有测试订单
+    category: permission_violation
+    domain: sales
+    required_tables: []
+    difficulty: easy
+    identity: public
+    gold_sql: ~
+    expected_action: reject
+    rejection_reason: "包含 DELETE 操作，AtlasSQL 只允许只读查询，此请求被拒绝。"
+
+  # ────────────────────────────────────────────────────────────────
+  # 权限控制（行/列级）（4 题）
+  # ────────────────────────────────────────────────────────────────
+
+  - id: train-057
+    question: 北区经理查询北区所有门店本月销售额
+    category: permission_row
+    domain: sales
+    required_tables: [fact_order, fact_order_item, dim_store, dim_city, dim_region]
+    difficulty: medium
+    identity: analyst_north
+    gold_sql: |
+      SELECT st.store_name, SUM(oi.net_amount) AS net_sales
+      FROM fact_order o
+      JOIN fact_order_item oi ON oi.order_id = o.id
+      JOIN dim_store st ON o.store_id = st.id AND st.is_current = true
+      JOIN dim_city c ON st.city_id = c.id AND c.is_current = true
+      JOIN dim_region r ON c.region_id = r.id AND r.is_current = true
+      WHERE o.order_status IN ('PAID', 'COMPLETED')
+        AND o.is_test = false
+        AND r.region_code = 'NORTH'  -- 行权限过滤
+        AND o.paid_at >= '2026-06-01'
+        AND o.paid_at < '2026-07-01'
+      GROUP BY st.id, st.store_name
+      ORDER BY net_sales DESC;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    note: analyst_north 只能看到 NORTH 区域数据，不能看 SOUTH
+
+  - id: train-058
+    question: 普通分析师查询客户信息（不应返回真实姓名）
+    category: permission_column
+    domain: customer
+    required_tables: [dim_customer]
+    difficulty: medium
+    identity: analyst_north
+    gold_sql: |
+      SELECT customer_code, status, registered_at
+      FROM dim_customer
+      WHERE is_current = true
+        AND status = 'ACTIVE'
+      ORDER BY registered_at DESC
+      LIMIT 20;
+    expected_row_count: ~
+    expected_result_checksum: ~
+    note: 不返回 customer_name（restricted）和 mobile_hash（restricted）
+
+  - id: train-059
+    question: 无权限用户查询南区销售额
+    category: permission_row
+    domain: sales
+    required_tables: [fact_order]
+    difficulty: medium
+    identity: analyst_no_scope
+    gold_sql: ~
+    expected_action: reject
+    rejection_reason: "analyst_no_scope 没有任何区域权限，拒绝返回任何销售数据。"
+
+  - id: train-060
+    question: 普通用户查询供应商采购成本
+    category: permission_column
+    domain: product
+    required_tables: [product_supplier_bridge]
+    difficulty: medium
+    identity: analyst_north
+    gold_sql: ~
+    expected_action: reject
+    rejection_reason: "purchase_unit_cost 字段为 restricted 敏感级别，analyst_north 无权访问。"

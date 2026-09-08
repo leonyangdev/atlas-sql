@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from server.config import Settings, get_settings
+from server.db import create_control_engine, create_session_factory
 from server.health import DependencyChecker, HealthChecker
 
 
@@ -18,6 +19,8 @@ def create_app(
 
     ``settings`` 和 ``health_checker`` 的可选注入点用于测试和未来多环境启动。运行时对象放入
     ``app.state``，让路由通过请求所属应用读取，避免使用难以替换的模块级全局变量。
+
+    控制库引擎和 session 工厂也挂载到 app.state，供数据源等路由读取。
     """
 
     app = FastAPI(
@@ -28,6 +31,18 @@ def create_app(
     runtime_settings = settings or get_settings()
     app.state.settings = runtime_settings
     app.state.health_checker = health_checker or DependencyChecker(runtime_settings)
+
+    # 控制库 ORM 引擎与 session 工厂
+    engine = create_control_engine(runtime_settings.control_database_url)
+    app.state.db_engine = engine
+    app.state.db_session_factory = create_session_factory(engine)
+
+    # 注册路由
+    from server.datasource.router import router as datasource_router
+    from server.metadata.router import router as metadata_router
+
+    app.include_router(datasource_router)
+    app.include_router(metadata_router)
 
     @app.get("/health/live", tags=["health"])
     async def liveness() -> dict[str, str]:

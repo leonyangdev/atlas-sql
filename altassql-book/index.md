@@ -1,71 +1,73 @@
 ---
-title: 从业务问题走到可靠 SQL
+layout: home
+
+hero:
+  name: AtlasSQL
+  text: 企业级 NL2SQL 学习手册
+  tagline: 跟着真实项目，从业务问题走到可靠 SQL。理解每一层的失败，再理解每一层的设计。
+  actions:
+    - theme: brand
+      text: 从这里开始 →
+      link: /guide/overview
+    - theme: alt
+      text: 查看开发进度
+      link: /plan/
+
+features:
+  - icon: 🏪
+    title: 真实业务背景
+    details: NovaRetail 零售集团，7 个业务域、56 张表、百万级模拟数据。故意设计 Join 放大、跨期退款、枚举编码等 NL2SQL 难题。
+    link: /guide/business-model
+    linkText: 了解业务模型
+
+  - icon: 🔍
+    title: 分层检索链路
+    details: 词法检索（OpenSearch BM25）+ 密集检索（Milvus BGE-M3）+ RRF 融合 + Reranker，再到 Schema Linking 和 Join Graph。
+    link: /modules/retrieval
+    linkText: 了解检索模块
+
+  - icon: 📐
+    title: 业务语义层
+    details: 版本化指标（net_sales、gross_margin_rate…）、Verified Query Repository、Semantic Model 生命周期管理。
+    link: /modules/semantics
+    linkText: 了解语义模块
+
+  - icon: 🛡️
+    title: 治理与安全
+    details: 四层权限（用户→应用策略→授权元数据→数据库原生）、SQLGlot AST 检查、只读执行与 SQL 修复。
+    link: /modules/governance
+    linkText: 了解治理模块
+
+  - icon: 📊
+    title: 可测量的演进
+    details: 120 道 Gold SQL Benchmark（train/tune/test 三集隔离），每期有验收场景、实测证据和失败案例。
+    link: /stages/v0
+    linkText: 查看 V0 学习路线
+
+  - icon: 💬
+    title: 面试可复述
+    details: 每期给出"两分钟复述骨架"，帮助你把架构演进、失败案例和设计取舍组织成面试叙事。
+    link: /interview/story
+    linkText: 看面试叙事框架
 ---
 
-<div class="eyebrow">ATLASSQL / ENGINEERING NOTEBOOK</div>
+<div class="home-extra">
 
-# 从业务问题，走到可靠 SQL
+## 如何阅读这本手册
 
-一部跟着项目演进的学习手册。以 NovaRetail 零售集团为业务背景，理解自然语言如何经过元数据、检索、语义和权限，成为有依据的数据答案。
+手册分四个区域，按需取用：
 
-::: info 当前处于设计与计划阶段
-仓库尚无业务实现。手册中的架构、接口和路径均标明设计状态；开发完成后再补入真实代码与实测。下方数字读取根目录 `plan/`，不会把文档完成算作功能完成。
-:::
+| 目标 | 推荐路径 |
+|------|----------|
+| **初次认识项目** | [项目全景](/guide/overview) → [业务与指标](/guide/business-model) → [贯穿案例](/guide/walkthrough) |
+| **理解系统设计** | [总体架构](/architecture/overview) → [技术栈](/architecture/stack) → [存储与缓存](/architecture/storage) |
+| **跟着代码学习** | [如何学习](/guide/learning) → [代码地图](/architecture/code-map) → [V0 学习路线](/stages/v0) |
+| **准备面试复盘** | [架构决策](/architecture/decisions) → [面试叙事](/interview/story) → [问题练习](/interview/questions) |
 
-## 从这里开始读
-
-<div class="reading-grid">
-<div>
-
-**第一次认识项目**
-
-[项目全景](/guide/overview) → [用户需求](/guide/requirements) → [业务与指标](/guide/business-model)
-
-</div>
-<div>
-
-**跟一条完整业务链**
-
-[华东销售同比案例](/guide/walkthrough) → [总体架构](/architecture/overview) → [模块契约](/architecture/contracts)
-
-</div>
-<div>
-
-**跟着 AI 开发**
-
-[学习方法](/guide/learning) → [代码地图](/architecture/code-map) → [V0 学习路线](/stages/v0)
-
-</div>
-<div>
-
-**为面试留下证据**
-
-[架构取舍](/architecture/decisions) → [证据与叙事](/interview/story) → [问题练习](/interview/questions)
-
-</div>
-</div>
-
-## 按阶段开发
+## 当前开发进度
 
 <PhaseProgress />
 
-从 [V0 的第一项工程任务](/plan/v0-foundation#v0-s01-工程骨架与环境配置) 开始。每个故事都包含依赖、开发任务、验收场景与学习目标。完成并验证后，在源文件中把 `[ ]` 改为 `[x]`。
+每期都有依赖、验收场景和学习目标。完成并验证后，在源文件中把 `[ ]` 改为 `[x]`。[查看完整任务台账 →](/plan/)
 
-## 把代码读成一条业务链
-
-```text
-问题与身份 → 理解意图 → 选择数据域 → 召回表列与真实值
-      → 关联路径 → 指标口径 → 查询计划 → SQL
-      → 安全与成本检查 → 只读执行 → 结果验证 → 解释
-```
-
-例如“今年华东销售额同比如何”：先确定“今年”的截止日，再确定“销售额”是否扣退款、按支付还是下单时间，最后才讨论 SQL。每个环节都承担一种可单独验证的责任。
-
-## 开始之前
-
-- [开发计划与统一完成标准](/plan/)
-- [需求覆盖矩阵](/plan/coverage)
-- [如何给 AI 下达单个任务](/plan/ai-workflow)
-- [阅读原始项目总纲](/reference/project)
-
-V4 是企业级问数 1.0 的主要面试里程碑；V5、V6 在它的基础上增加多步分析和持续运营。学习时始终回答：这一层解决什么失败，代价是什么，测试如何证明它有效？
+</div>

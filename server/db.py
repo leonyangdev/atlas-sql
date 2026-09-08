@@ -4,7 +4,12 @@
 """
 
 from pydantic import SecretStr
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.orm import DeclarativeBase
 
 
@@ -28,3 +33,9 @@ def create_control_engine(url: SecretStr) -> AsyncEngine:
     """创建带失效连接探测的控制库异步引擎。"""
 
     return create_async_engine(sqlalchemy_url(url), pool_pre_ping=True)
+
+
+def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """创建异步 session 工厂；expire_on_commit=False 避免懒加载在 async 场景下触发。"""
+
+    return async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
