@@ -1,3 +1,5 @@
+"""从声明式 catalog 生成机器可读字典和面向学习者的业务域关系图。"""
+
 import json
 from collections import Counter
 from pathlib import Path
@@ -8,6 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
+    """校验源目录后一次性重建两个派生产物。
+
+    JSON 供后续元数据同步和测试读取，Markdown 只呈现业务域之间的主要分析关系。物理外键
+    的完整清单仍以 catalog 和生成的 SQL 为准。
+    """
+
     errors = validate_catalog()
     if errors:
         raise SystemExit("\n".join(errors))
@@ -27,6 +35,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    # Mermaid 图保持在“业务域”粒度，避免 56 张表的完整 ER 图在学习站中无法阅读。
     lines = [
         "# NovaRetail 业务域关系",
         "",

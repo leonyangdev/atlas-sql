@@ -1,3 +1,5 @@
+"""集中定义 AtlasSQL 运行配置及其安全输出形式。"""
+
 from functools import lru_cache
 from urllib.parse import urlsplit
 
@@ -6,7 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Runtime configuration loaded from ATLAS_* environment variables."""
+    """从 ``ATLAS_*`` 环境变量加载并校验运行配置。
+
+    业务库保留 reader 与 owner 两条连接：API 日常查询只能使用 reader；owner 只允许迁移和
+    本地数据生成脚本使用。URL 使用 ``SecretStr``，防止日志或调试输出意外打印密码。
+    """
 
     model_config = SettingsConfigDict(
         env_prefix="ATLAS_",
@@ -30,6 +36,8 @@ class Settings(BaseSettings):
     @field_validator("control_database_url", "business_database_url", "business_owner_database_url")
     @classmethod
     def validate_postgres_url(cls, value: SecretStr | None) -> SecretStr | None:
+        """提前拒绝错误驱动，避免在首次连接时才得到难定位的异常。"""
+
         if value is None:
             return None
         scheme = urlsplit(value.get_secret_value()).scheme
@@ -40,6 +48,8 @@ class Settings(BaseSettings):
     @field_validator("redis_url")
     @classmethod
     def validate_redis_url(cls, value: SecretStr) -> SecretStr:
+        """Redis 同时允许本地明文协议和生产 TLS 协议。"""
+
         if urlsplit(value.get_secret_value()).scheme not in {"redis", "rediss"}:
             raise ValueError("must use a redis or rediss URL")
         return value
@@ -47,12 +57,16 @@ class Settings(BaseSettings):
     @field_validator("opensearch_url")
     @classmethod
     def validate_opensearch_url(cls, value: SecretStr) -> SecretStr:
+        """OpenSearch 通过 HTTP API 检查，只接受 HTTP(S) URL。"""
+
         if urlsplit(value.get_secret_value()).scheme not in {"http", "https"}:
             raise ValueError("must use an http or https URL")
         return value
 
     @model_validator(mode="after")
     def databases_must_be_isolated(self) -> "Settings":
+        """阻止控制库连接串被直接复用为业务查询连接串。"""
+
         if (
             self.control_database_url.get_secret_value()
             == self.business_database_url.get_secret_value()
@@ -61,7 +75,7 @@ class Settings(BaseSettings):
         return self
 
     def safe_summary(self) -> dict[str, str | int | float]:
-        """Return values safe to include in logs and diagnostics."""
+        """返回可安全写入日志的配置摘要，所有连接 URL 都用固定占位符代替。"""
         return {
             "environment": self.environment,
             "log_level": self.log_level,
@@ -80,4 +94,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """进程内只解析一次环境配置；测试可直接构造 ``Settings``，不依赖此缓存。"""
+
     return Settings()  # type: ignore[call-arg]

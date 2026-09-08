@@ -1,13 +1,27 @@
+"""NovaRetail 声明式业务目录。
+
+每张表在这里同时记录物理字段和业务语义。数据字典、PostgreSQL 迁移及数据生成器都读取
+这个目录，避免同一 schema 在多个位置手工维护后逐渐不一致。
+"""
+
 from dataclasses import asdict, dataclass, field
 from typing import Literal
 
 Domain = Literal["store", "product", "customer", "sales", "inventory", "finance", "marketing"]
+# ``kind`` 决定表的分析方式。例如 snapshot 不能跨日期直接累加，bridge 用于多对多关系。
 TableKind = Literal["dimension", "fact", "bridge", "history", "snapshot", "aggregate"]
+# 敏感等级会在后续阶段进入检索过滤、结果脱敏和审计策略。
 Sensitivity = Literal["public", "internal", "confidential", "restricted"]
 
 
 @dataclass(frozen=True)
 class Column:
+    """一个可生成物理 DDL 的字段及其业务治理属性。
+
+    ``reference`` 使用 ``table.column`` 形式；存在引用时，工厂会同步设置关系基数，防止只写
+    外键却遗漏 Join 语义。``time_role`` 区分支付时间、业务日期和入仓时间等不同口径。
+    """
+
     name: str
     data_type: str
     nullable: bool
@@ -21,6 +35,8 @@ class Column:
 
 @dataclass(frozen=True)
 class Table:
+    """一张业务表的粒度、来源、历史策略和字段集合。"""
+
     domain: Domain
     name: str
     kind: TableKind
@@ -33,9 +49,13 @@ class Table:
 
     @property
     def columns(self) -> tuple[Column, ...]:
+        """按“公共治理字段 → 业务字段”返回最终物理列顺序。"""
+
         return COMMON_COLUMNS + self.business_columns
 
     def to_dict(self) -> dict[str, object]:
+        """展开公共字段，生成适合 JSON 数据字典消费的普通字典。"""
+
         value = asdict(self)
         value["columns"] = [asdict(column) for column in self.columns]
         value.pop("business_columns")
@@ -53,6 +73,8 @@ def column(
     sensitivity: Sensitivity = "internal",
     time_role: str | None = None,
 ) -> Column:
+    """创建字段，并根据外键引用自动补充 many-to-one 基数。"""
+
     return Column(
         name=name,
         data_type=data_type,
@@ -66,6 +88,8 @@ def column(
     )
 
 
+# 所有表共享这些字段，确保租户隔离、来源追踪和 SCD 有统一表达。业务时间仍由各表自己的
+# ``time_role`` 字段声明，不能用 created_at 代替下单、支付或退款时间。
 COMMON_COLUMNS = (
     column("id", "bigint", "稳定代理主键", is_primary_key=True),
     column("tenant_id", "bigint", "租户隔离键", sensitivity="confidential"),
@@ -90,6 +114,8 @@ def t(
     *columns: Column,
     enums: dict[str, tuple[str, ...]] | None = None,
 ) -> Table:
+    """以紧凑形式声明表，减少 56 张表中重复的 dataclass 构造样板。"""
+
     return Table(domain, name, kind, grain, source, time_meaning, history, columns, enums or {})
 
 
@@ -983,6 +1009,12 @@ TABLES: tuple[Table, ...] = (
 
 
 def validate_catalog() -> list[str]:
+    """一次返回全部结构错误，方便开发者集中修复 catalog。
+
+    校验在生成 JSON 和 SQL 之前运行。这里检查名称、主键、引用、基数和枚举声明；数据库
+    运行期的数据一致性由外键、CHECK 约束和数据生成质量门禁负责。
+    """
+
     errors: list[str] = []
     names = {table.name for table in TABLES}
     if len(names) != len(TABLES):

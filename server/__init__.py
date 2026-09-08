@@ -1,1 +1,1 @@
-"""AtlasSQL backend package."""
+"""AtlasSQL 后端包：承载控制面 API、配置、数据库和后续问数业务模块。"""

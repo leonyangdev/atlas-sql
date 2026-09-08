@@ -17,9 +17,10 @@ depends_on: str | Sequence[str] | None = ${repr(depends_on)}
 
 
 def upgrade() -> None:
+    """把控制库从上一版本升级到本版本。"""
     ${upgrades if upgrades else "pass"}
 
 
 def downgrade() -> None:
+    """仅在变更可安全回滚时实现降级；生成后需要人工审查。"""
     ${downgrades if downgrades else "pass"}
-
