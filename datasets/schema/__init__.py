@@ -1,0 +1,1 @@
+"""Versioned NovaRetail schema catalog."""

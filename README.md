@@ -2,7 +2,7 @@
 
 企业级自然语言问数与数据分析平台，同时作为 AI 协作开发、架构学习和面试复盘项目。
 
-当前仓库包含项目总纲、V0～V6 开发计划和 VitePress 学习站；业务系统尚未实现。
+当前正在开发 V0。仓库已有 FastAPI 后端、Data Analyst 与 Admin Console 前端骨架，以及本地基础设施编排；业务数据模型与元数据能力仍按 V0 计划推进。
 
 - 项目总纲：` docs/PROJECT.md`（原始目录名前有空格，保留未改动）。
 - [开发计划](plan/README.md)：40 个用户故事、136 个可勾选任务，依赖、验收、学习目标和证据模板。
@@ -17,6 +17,63 @@
 - [GitHub Pages 部署记录](https://github.com/leonyangdev/atlas-sql/actions/workflows/pages.yml)
 
 推送到 `main` 后，GitHub Actions 自动安装锁定依赖、检查计划、构建站点、检查链接，然后发布到 GitHub Pages。构建使用 `BOOK_BASE=/atlas-sql/`；本地开发继续使用根路径。
+
+## V0 本地开发
+
+需要 Python 3.12+、[uv](https://docs.astral.sh/uv/)、Node.js 22+、npm 和 Docker Compose。
+
+```bash
+cp .env.example .env.atlas
+uv sync --locked --all-groups
+npm ci
+docker compose --env-file .env.atlas up -d
+```
+
+启动后端：
+
+```bash
+uv run uvicorn server.api.app:create_app --factory --reload --port 8000
+```
+
+健康检查：
+
+```bash
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+```
+
+`live` 只说明 API 进程可响应；`ready` 会并发检查控制库、业务库、Redis、OpenSearch 和 Milvus，任一依赖不可用时返回 HTTP 503 和依赖类型，不回显连接地址或密码。
+
+两个前端分别运行在 3000 和 3001 端口：
+
+```bash
+npm run dev:web
+npm run dev:admin
+```
+
+本地质量检查：
+
+```bash
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy
+uv run pytest --cov=server --cov-report=term-missing --cov-fail-under=85
+npm run typecheck
+npm run build
+docker compose --env-file .env.example config --quiet
+```
+
+停止基础设施使用 `docker compose --env-file .env.atlas down`；这会保留命名卷。不要在生产环境使用 `.env.example` 中的开发密码。资源检查见 `./scripts/infra-status.sh`。
+
+## 数据库边界
+
+控制库运行在 5432，保存 AtlasSQL 自身的元数据与治理资产；NovaRetail 业务库运行在 5433。后端健康检查通过 `atlas_reader` 只读账户连接业务库，该账户默认只读且只有现有/未来 public 表的 SELECT 权限。Alembic 只迁移控制库：
+
+```bash
+uv run alembic upgrade head
+```
+
+V0-S02 会增加业务库的可重复迁移，V0-S04 会增加控制面的首批实体。现在 `migrations/versions` 为空是有意的，工程骨架不预先伪造业务模型。
 
 ## 启动学习站
 
@@ -38,4 +95,4 @@ npm run preview
 
 在根目录 `plan/` 修改任务勾选，学习站自动同步；不要编辑站点内生成的 `plan/` 副本。静态部署需要修改后重新构建。
 
-建议先读学习站“项目全景”和“如何学习”，再从 `V0-S01-T01` 开始逐任务开发。
+建议先读学习站“项目全景”和“如何学习”，再按 `plan/v0-foundation.md` 的依赖顺序开发。

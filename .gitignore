@@ -8,3 +8,14 @@ altassql-book/reference/project.md
 .env
 .env.*
 !.env.example
+.env.atlas
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.next/
+*.tsbuildinfo
+deploy/volumes/

@@ -1,0 +1,112 @@
+catalog_version: 0.1.0
+status: approved_for_test_data
+review:
+  reviewer: NovaRetail Analytics Council (simulated)
+  reviewed_at: 2026-09-08
+  scope: V0 deterministic dataset and benchmark
+  note: Production publication still requires the V3 lifecycle and regression gate.
+
+defaults:
+  timezone: Asia/Shanghai
+  currency: CNY
+  interval_convention: "[start, end)"
+  tax_treatment: tax_inclusive
+  order_time_role: paid_at
+  refund_time_role: refunded_at
+
+metrics:
+  - id: net_sales
+    label: 销售额
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - SUM(refunded_item_amount)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_refund.refund_status = 'REFUNDED' when refund rows are present"
+    time_rule: 支付按 paid_at 归属，退款按 refunded_at 归属；跨期退款回冲退款发生期。
+    zero_denominator: not_applicable
+    open_decisions:
+      - 财务域 revenue ledger 的收入与销售域销售额不是同一指标。
+
+  - id: paid_order_count
+    label: 有效订单量
+    grain: order
+    expression: "COUNT(DISTINCT fact_order.id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    time_rule: 按 paid_at 归属。
+    zero_denominator: not_applicable
+
+  - id: sales_quantity
+    label: 销售数量
+    grain: order_item
+    expression: "SUM(fact_order_item.quantity) - SUM(fact_refund_item.refund_quantity)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    time_rule: 销售按 paid_at、退款按 refunded_at 归属。
+    zero_denominator: not_applicable
+
+  - id: average_order_value
+    label: 客单价
+    grain: period
+    expression: "net_sales / paid_order_count"
+    required_filters: []
+    time_rule: 分子和分母必须使用同一支付时间窗口。
+    zero_denominator: null_with_reason
+
+  - id: refunded_amount
+    label: 退款金额
+    grain: refund_item
+    expression: "SUM(fact_refund_item.refund_amount)"
+    required_filters:
+      - "fact_refund.refund_status = 'REFUNDED'"
+    time_rule: 按 refunded_at 归属。
+    zero_denominator: not_applicable
+
+  - id: refund_rate
+    label: 退款率
+    grain: period
+    expression: "refunded_amount / gross_paid_sales"
+    required_filters: []
+    time_rule: 退款与支付均按各自事件发生时间统计，因此它是期间现金流口径。
+    zero_denominator: null_with_reason
+    open_decisions:
+      - 需要按原订单期归属时应另建 cohort_refund_rate，不能复用此指标。
+
+  - id: gross_profit
+    label: 毛利额
+    grain: order_item
+    expression: "net_sales - recognized_cost"
+    required_filters: []
+    time_rule: 成本与销售使用相同业务期间；未入账成本显示数据不完整。
+    zero_denominator: not_applicable
+    sensitivity: restricted
+
+  - id: gross_margin_rate
+    label: 毛利率
+    grain: period
+    expression: "SUM(gross_profit) / SUM(net_sales)"
+    required_filters: []
+    time_rule: 分子和分母使用相同期间、币种和退款口径。
+    zero_denominator: null_with_reason
+    sensitivity: restricted
+    warning: 禁止对明细行毛利率做简单平均。
+
+  - id: new_customer_count
+    label: 新客户数
+    grain: customer
+    expression: "COUNT(DISTINCT customer_id) where first_valid_paid_at is in period"
+    required_filters:
+      - "first order is non-test and paid or completed"
+    time_rule: 按客户首次有效支付时间归属，不按注册时间。
+    zero_denominator: not_applicable
+
+  - id: inventory_available_quantity
+    label: 可用库存
+    grain: snapshot_date_warehouse_sku
+    expression: "SUM(fact_inventory_snapshot.available_quantity)"
+    required_filters: []
+    time_rule: 取目标时点每个仓库 SKU 的最新日末快照，禁止跨日直接求和。
+    zero_denominator: not_applicable

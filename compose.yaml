@@ -1,0 +1,149 @@
+name: atlas-sql
+
+services:
+  control-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ATLAS_CONTROL_DB_NAME:-atlas_control}
+      POSTGRES_USER: ${ATLAS_CONTROL_DB_USER:-atlas_control}
+      POSTGRES_PASSWORD: ${ATLAS_CONTROL_DB_PASSWORD:-atlas_control_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - control-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  business-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${ATLAS_BUSINESS_DB_NAME:-nova_retail}
+      POSTGRES_USER: ${ATLAS_BUSINESS_DB_OWNER:-atlas_owner}
+      POSTGRES_PASSWORD: ${ATLAS_BUSINESS_DB_OWNER_PASSWORD:-atlas_owner_dev}
+      ATLAS_BUSINESS_DB_READER: ${ATLAS_BUSINESS_DB_READER:-atlas_reader}
+      ATLAS_BUSINESS_DB_READER_PASSWORD: ${ATLAS_BUSINESS_DB_READER_PASSWORD:-atlas_reader_dev}
+    ports:
+      - "5433:5432"
+    volumes:
+      - business-postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/business-init.sh:/docker-entrypoint-initdb.d/10-business-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  opensearch:
+    image: opensearchproject/opensearch:3.0.0
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+    restart: unless-stopped
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: >-
+      etcd --advertise-client-urls=http://127.0.0.1:2379
+      --listen-client-urls=http://0.0.0.0:2379
+      --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    command: minio server /minio_data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  milvus:
+    image: milvusdb/milvus:v3.0.0
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus-data:/var/lib/milvus
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  control-postgres-data:
+  business-postgres-data:
+  redis-data:
+  opensearch-data:
+  etcd-data:
+  minio-data:
+  milvus-data:
+

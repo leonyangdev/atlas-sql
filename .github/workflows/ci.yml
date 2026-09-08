@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install Python 3.12 and locked dependencies
+        run: uv sync --locked --all-groups
+      - name: Ruff format
+        run: uv run ruff format --check .
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Mypy
+        run: uv run mypy
+      - name: Pytest
+        run: uv run pytest --cov=server --cov-report=term-missing --cov-fail-under=85
+
+  frontends:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Validate Docker Compose
+        run: docker compose --env-file .env.example config --quiet

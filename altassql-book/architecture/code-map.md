@@ -2,14 +2,33 @@
 
 ## 仓库现状
 
-截至本次文档交付，真实存在的是以下内容。业务模块目录尚未建立。
+V0 已进入开发，当前真实目录如下。尚未出现的模块仍保留在后面的目标目录表中。
 
 ```text
 atlas-sql/
 ├── AGENT.md                     简洁可读的代码约定
-├── README.md                    仓库入口与文档站命令
+├── README.md                    仓库入口与本地运行命令
+├── compose.yaml                 本地完整基础设施
+├── pyproject.toml / uv.lock     Python 工程与锁文件
+├── package.json / package-lock  前端 workspace 与锁文件
+├── apps/
+│   ├── web/                     Data Analyst Next.js 骨架
+│   └── admin/                   Admin Console Next.js 骨架
+├── server/
+│   ├── api/app.py               FastAPI 工厂和健康路由
+│   ├── config.py                配置校验与脱敏摘要
+│   ├── db.py                    async SQLAlchemy 引擎
+│   └── health.py                五类依赖的并发检查
+├── datasets/
+│   ├── schema/catalog.py        56 表声明式业务目录
+│   └── dictionary/              生成的 JSON 字典与域关系图
+├── semantic_models/drafts/      V0 指标口径草案
+├── migrations/                 控制库 Alembic 骨架
+├── deploy/postgres/             业务库只读账户初始化
+├── scripts/                     目录生成与资源检查命令
+├── tests/                       配置、健康、目录和指标测试
 ├── " docs"/PROJECT.md           原始总纲（目录名前有空格）
-├── plan/                        唯一任务台账与验收记录
+├── plan/                        唯一任务台账与真实验收记录
 └── altassql-book/
     ├── .vitepress/config.mts    站点路由、搜索、计划监听
     ├── .vitepress/theme/        主题、样式、阶段进度组件
@@ -45,7 +64,7 @@ atlas-sql/
 
 ## 真实实现索引如何维护
 
-每个故事验收后在对应阶段页填写：任务 ID、真实文件、类/函数、上游调用者、下游依赖、输入输出、验证入口、证据路径。尚未实现时保持“待开发”，不要链接到不存在的 GitHub 仓库或虚构行号。
+每个故事验收后在对应阶段页填写：任务 ID、真实文件、类/函数、上游调用者、下游依赖、输入输出、验证入口、证据路径。V0 当前入口已登记在 [V0 阶段页](/stages/v0)，后续故事沿用同一格式。
 
 ```text
 任务：V2-S03-T01

@@ -1,0 +1,25 @@
+{
+  "name": "atlas-sql-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @atlas-sql/web",
+    "dev:admin": "npm run dev --workspace @atlas-sql/admin",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}
+
