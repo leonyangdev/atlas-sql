@@ -1,0 +1,12 @@
+version: 0.1.0
+enabled_by_default: false
+cases:
+  - id: orphan_order_item
+    expected_check: foreign_key
+    description: 指向不存在订单的明细，只用于验证失败测试。
+  - id: order_amount_mismatch
+    expected_check: monetary_reconciliation
+    description: 订单金额与明细净额不相等。
+  - id: paid_order_without_payment
+    expected_check: status_consistency
+    description: 已完成订单缺少成功支付记录。

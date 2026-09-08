@@ -20,15 +20,18 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     control_database_url: SecretStr
     business_database_url: SecretStr
+    business_owner_database_url: SecretStr | None = None
     redis_url: SecretStr
     opensearch_url: SecretStr
     milvus_host: str = "127.0.0.1"
     milvus_port: int = Field(default=19530, ge=1, le=65535)
     dependency_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
 
-    @field_validator("control_database_url", "business_database_url")
+    @field_validator("control_database_url", "business_database_url", "business_owner_database_url")
     @classmethod
-    def validate_postgres_url(cls, value: SecretStr) -> SecretStr:
+    def validate_postgres_url(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
         scheme = urlsplit(value.get_secret_value()).scheme
         if scheme not in {"postgresql", "postgresql+asyncpg"}:
             raise ValueError("must use a postgresql or postgresql+asyncpg URL")
@@ -64,6 +67,9 @@ class Settings(BaseSettings):
             "log_level": self.log_level,
             "control_database_url": "**********",
             "business_database_url": "**********",
+            "business_owner_database_url": (
+                "**********" if self.business_owner_database_url is not None else "not_configured"
+            ),
             "redis_url": "**********",
             "opensearch_url": "**********",
             "milvus_host": self.milvus_host,

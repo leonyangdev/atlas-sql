@@ -21,6 +21,10 @@ atlas-sql/
 │   └── health.py                五类依赖的并发检查
 ├── datasets/
 │   ├── schema/catalog.py        56 表声明式业务目录
+│   ├── migrations.py            业务迁移校验与执行器
+│   ├── business_migrations/     生成的 NovaRetail SQL 迁移
+│   ├── generator/               确定性数据规则、批量写入与校验
+│   ├── fixtures/                权限范围与隔离的脏数据用例
 │   └── dictionary/              生成的 JSON 字典与域关系图
 ├── semantic_models/drafts/      V0 指标口径草案
 ├── migrations/                 控制库 Alembic 骨架

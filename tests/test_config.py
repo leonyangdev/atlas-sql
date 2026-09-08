@@ -21,7 +21,16 @@ def test_settings_redact_connection_urls() -> None:
     summary = settings.safe_summary()
 
     assert summary["control_database_url"] == "**********"
+    assert summary["business_owner_database_url"] == "not_configured"
     assert "password" not in repr(settings)
+
+
+def test_settings_redact_optional_business_owner_url() -> None:
+    settings = valid_settings(
+        business_owner_database_url="postgresql://owner:password@localhost:5433/nova_retail"
+    )
+
+    assert settings.safe_summary()["business_owner_database_url"] == "**********"
 
 
 def test_settings_require_supported_url_scheme() -> None:

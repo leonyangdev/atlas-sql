@@ -2,7 +2,7 @@
 
 企业级自然语言问数与数据分析平台，同时作为 AI 协作开发、架构学习和面试复盘项目。
 
-当前正在开发 V0。仓库已有 FastAPI 后端、Data Analyst 与 Admin Console 前端骨架，以及本地基础设施编排；业务数据模型与元数据能力仍按 V0 计划推进。
+当前正在开发 V0。V0-S01～V0-S03 已完成：仓库已有工程骨架、本地基础设施、56 张业务表的可重复迁移，以及 tiny / dev / scale 三档确定性数据。元数据中心从 V0-S04 开始建设。
 
 - 项目总纲：` docs/PROJECT.md`（原始目录名前有空格，保留未改动）。
 - [开发计划](plan/README.md)：40 个用户故事、136 个可勾选任务，依赖、验收、学习目标和证据模板。
@@ -73,7 +73,30 @@ docker compose --env-file .env.example config --quiet
 uv run alembic upgrade head
 ```
 
-V0-S02 会增加业务库的可重复迁移，V0-S04 会增加控制面的首批实体。现在 `migrations/versions` 为空是有意的，工程骨架不预先伪造业务模型。
+V0-S02 已增加业务库的可重复迁移，V0-S04 会增加控制面的首批实体。现在控制库的 `migrations/versions` 为空是有意的，首个控制面实体由 V0-S04 引入。
+
+业务库使用独立迁移记录，先生成并应用 56 张 NovaRetail 表：
+
+```bash
+uv run python scripts/build_business_migration.py
+uv run python scripts/migrate_business.py
+```
+
+第二次执行迁移会显示 `001: skipped`；如果已应用迁移的内容被修改，校验和检查会拒绝继续。迁移完成后，`atlas_reader` 可以 SELECT，但默认事务只读且不能写入。
+
+## 确定性模拟数据
+
+数据生成器固定 seed `20260908` 和业务时钟 `2026-06-30T16:00:00Z`。生成会替换本地业务库快照，因此必须同时传入 `--reset` 和数据库名确认：
+
+```bash
+uv run python scripts/seed_data.py --profile tiny --reset --confirm-database nova_retail
+uv run python scripts/seed_data.py --profile dev --reset --confirm-database nova_retail
+uv run python scripts/seed_data.py --profile scale --reset --confirm-database nova_retail
+```
+
+重置只允许指向本机 `nova_retail`，并拒绝使用只读身份。默认数据包含跨年订单、支付与跨期退款、门店归属变化、库存快照、营销多对多、会员历史、NULL、同名商品、内部编码、取消订单和测试订单。故意错误的数据只记录在 `datasets/fixtures/dirty_cases.yaml`，默认不会导入。
+
+scale 配置在 2026-09-08 实测生成 20 万订单和 100 万订单明细，共 1,422,172 行；详细环境、耗时、数据库空间和校验摘要见 `plan/evidence/V0-S03.md`。
 
 ## 启动学习站
 

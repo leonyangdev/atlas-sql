@@ -1,0 +1,15 @@
+version: 0.1.0
+description: V0 权限测试身份；V4 接入可信认证后复用这些范围，不包含真实员工信息。
+principals:
+  - principal_id: analyst_north
+    allowed_region_codes: [NORTH]
+    allowed_store_codes: [BJ-001, BJ-002]
+  - principal_id: analyst_south
+    allowed_region_codes: [SOUTH]
+    allowed_store_codes: [SZ-001]
+  - principal_id: store_bj_001
+    allowed_region_codes: []
+    allowed_store_codes: [BJ-001]
+  - principal_id: analyst_no_scope
+    allowed_region_codes: []
+    allowed_store_codes: []
