@@ -15,6 +15,7 @@
       ],
       "jinja": true,
       "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env.atlas",
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },

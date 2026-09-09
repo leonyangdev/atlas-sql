@@ -50,9 +50,14 @@ def create_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://127.0.0.1:3000", "http://localhost:3000"],
-        allow_methods=["GET", "POST"],
-        allow_headers=["Content-Type", "x-atlas-identity"],
+        allow_origins=[
+            "http://127.0.0.1:3000",
+            "http://localhost:3000",
+            "http://127.0.0.1:3001",
+            "http://localhost:3001",
+        ],
+        allow_methods=["GET", "POST", "PATCH"],
+        allow_headers=["Content-Type", "x-atlas-identity", "x-admin-token"],
     )
     app.state.settings = runtime_settings
     app.state.health_checker = health_checker or DependencyChecker(runtime_settings)
