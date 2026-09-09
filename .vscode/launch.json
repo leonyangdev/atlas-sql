@@ -1,0 +1,138 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend API (FastAPI :8000)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "server.api.app:create_app",
+        "--factory",
+        "--reload",
+        "--port",
+        "8000"
+      ],
+      "jinja": true,
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "presentation": {
+        "group": "1-individual",
+        "order": 1
+      }
+    },
+    {
+      "name": "Web (apps/web :3000)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@atlas-sql/web"],
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "pattern": "Local:.*http://.*:([0-9]+)",
+        "uriFormat": "http://localhost:%s",
+        "action": "openExternally"
+      },
+      "presentation": {
+        "group": "1-individual",
+        "order": 2
+      }
+    },
+    {
+      "name": "Admin (apps/admin :3001)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "@atlas-sql/admin"],
+      "cwd": "${workspaceFolder}",
+      "serverReadyAction": {
+        "pattern": "Local:.*http://.*:([0-9]+)",
+        "uriFormat": "http://localhost:%s",
+        "action": "openExternally"
+      },
+      "presentation": {
+        "group": "1-individual",
+        "order": 3
+      }
+    },
+    {
+      "name": "Book (altassql-book :5173)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "${workspaceFolder}/altassql-book",
+      "serverReadyAction": {
+        "pattern": "Local:.*http://.*:([0-9]+)",
+        "uriFormat": "http://localhost:%s",
+        "action": "openExternally"
+      },
+      "presentation": {
+        "group": "1-individual",
+        "order": 4
+      }
+    },
+    {
+      "name": "Attach to Backend (debugpy :5678)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "."
+        }
+      ],
+      "justMyCode": true,
+      "presentation": {
+        "group": "2-attach",
+        "order": 1
+      }
+    },
+    {
+      "name": "Attach to Web (Chrome :3000)",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "urlFilter": "http://localhost:3000/*",
+      "webRoot": "${workspaceFolder}/apps/web",
+      "presentation": {
+        "group": "2-attach",
+        "order": 2
+      }
+    },
+    {
+      "name": "Attach to Admin (Chrome :3001)",
+      "type": "chrome",
+      "request": "attach",
+      "port": 9222,
+      "urlFilter": "http://localhost:3001/*",
+      "webRoot": "${workspaceFolder}/apps/admin",
+      "presentation": {
+        "group": "2-attach",
+        "order": 3
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Start: All Services",
+      "configurations": [
+        "Backend API (FastAPI :8000)",
+        "Web (apps/web :3000)",
+        "Admin (apps/admin :3001)",
+        "Book (altassql-book :5173)"
+      ],
+      "stopAll": true,
+      "presentation": {
+        "group": "0-all",
+        "order": 1
+      }
+    }
+  ]
+}

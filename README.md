@@ -171,7 +171,9 @@ cp .env.example .env.atlas
 uv sync --locked --all-groups
 npm ci
 
-# 启动基础设施（PostgreSQL × 2、Redis、OpenSearch、Milvus）
+# 启动基础设施
+# PostgreSQL × 2、Redis、OpenSearch、Milvus
+# 可视化工具：OpenSearch Dashboards（:5601）、Attu / Milvus（:8080）
 docker compose --env-file .env.atlas up -d
 
 # 初始化数据库
@@ -194,6 +196,17 @@ npm run dev:admin
 ```bash
 curl http://127.0.0.1:8000/health/ready
 ```
+
+各服务访问地址：
+
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 后端 API | http://127.0.0.1:8000 | FastAPI，含 `/docs` Swagger UI |
+| 用户端 | http://127.0.0.1:3000 | 自然语言问数页面 |
+| 管理后台 | http://127.0.0.1:3001 | 数据治理控制台 |
+| OpenSearch Dashboards | http://127.0.0.1:5601 | 元数据索引可视化 |
+| Attu（Milvus GUI） | http://127.0.0.1:8080 | 向量集合可视化，连接地址填 `localhost:19530` |
+| MinIO 控制台 | http://127.0.0.1:9001 | 对象存储，账号 `minioadmin` / `minioadmin` |
 
 **本地质量检查：**
 

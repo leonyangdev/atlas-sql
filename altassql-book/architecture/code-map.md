@@ -2,7 +2,8 @@
 
 ## 仓库现状
 
-V0 已进入开发，当前真实目录如下。尚未出现的模块仍保留在后面的目标目录表中。
+V0 已完成，V1-S01～S02 已建立问数契约、固定 Sales 范围、显式编排器和模型生成基线。
+尚未出现的模块仍保留在后面的目标目录表中。
 
 ```text
 atlas-sql/
@@ -16,8 +17,14 @@ atlas-sql/
 │   └── admin/                   Admin Console Next.js 骨架
 ├── server/
 │   ├── api/app.py               FastAPI 工厂和健康路由
+│   ├── api/query.py             问数提交与状态查询路由
 │   ├── config.py                配置校验与脱敏摘要
 │   ├── db.py                    async SQLAlchemy 引擎
+│   ├── domain/                  Query 契约与固定 Sales 白名单
+│   ├── generation/              版本化 Prompt 与候选 SQL 生成
+│   ├── llm/                     DeepSeek/Fake 网关与 Embedding 抽象
+│   ├── orchestrator/            显式问数流程与 Pipeline 端口
+│   ├── query/                   请求状态模型与仓储适配器
 │   └── health.py                五类依赖的并发检查
 ├── datasets/
 │   ├── schema/catalog.py        56 表声明式业务目录

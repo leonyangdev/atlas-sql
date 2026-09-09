@@ -1,9 +1,10 @@
 """集中定义 AtlasSQL 运行配置及其安全输出形式。"""
 
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
+        populate_by_name=True,
     )
 
     environment: str = "development"
@@ -32,6 +34,21 @@ class Settings(BaseSettings):
     milvus_host: str = "127.0.0.1"
     milvus_port: int = Field(default=19530, ge=1, le=65535)
     dependency_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    query_data_version: str = "v0.1.0"
+    query_schema_version: str = "001"
+    query_timeout_ms: int = Field(default=30_000, ge=1_000, le=120_000)
+    query_statement_timeout_ms: int = Field(default=10_000, ge=100, le=60_000)
+    query_max_concurrency: int = Field(default=8, ge=1, le=100)
+    query_max_rows: int = Field(default=500, ge=1, le=10_000)
+    llm_provider: Literal["fake", "deepseek"] = "fake"
+    llm_api_base: str = "https://api.deepseek.com"
+    llm_model: str = "deepseek-v4-flash"
+    llm_max_output_tokens: int = Field(default=2_048, ge=128, le=8_192)
+    llm_max_retries: int = Field(default=1, ge=0, le=2)
+    deepseek_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("DEEPSEEK_API_KEY", "ATLAS_DEEPSEEK_API_KEY"),
+    )
 
     @field_validator("control_database_url", "business_database_url", "business_owner_database_url")
     @classmethod
@@ -63,6 +80,15 @@ class Settings(BaseSettings):
             raise ValueError("must use an http or https URL")
         return value
 
+    @field_validator("deepseek_api_key", mode="before")
+    @classmethod
+    def blank_deepseek_key_is_not_configured(cls, value: object) -> object:
+        """把示例环境中的空值规范为 None，避免安全摘要误报已配置。"""
+
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def databases_must_be_isolated(self) -> "Settings":
         """阻止控制库连接串被直接复用为业务查询连接串。"""
@@ -72,6 +98,16 @@ class Settings(BaseSettings):
             == self.business_database_url.get_secret_value()
         ):
             raise ValueError("control and business databases must use different URLs")
+        return self
+
+    @model_validator(mode="after")
+    def selected_llm_provider_must_be_configured(self) -> "Settings":
+        """真实 Provider 必须在启动阶段发现缺失密钥，而不是处理请求时才失败。"""
+
+        if self.llm_provider == "deepseek" and (
+            self.deepseek_api_key is None or not self.deepseek_api_key.get_secret_value().strip()
+        ):
+            raise ValueError("DEEPSEEK_API_KEY is required when llm_provider=deepseek")
         return self
 
     def safe_summary(self) -> dict[str, str | int | float]:
@@ -89,6 +125,20 @@ class Settings(BaseSettings):
             "milvus_host": self.milvus_host,
             "milvus_port": self.milvus_port,
             "dependency_timeout_seconds": self.dependency_timeout_seconds,
+            "query_data_version": self.query_data_version,
+            "query_schema_version": self.query_schema_version,
+            "query_timeout_ms": self.query_timeout_ms,
+            "query_statement_timeout_ms": self.query_statement_timeout_ms,
+            "query_max_concurrency": self.query_max_concurrency,
+            "query_max_rows": self.query_max_rows,
+            "llm_provider": self.llm_provider,
+            "llm_api_base": self.llm_api_base,
+            "llm_model": self.llm_model,
+            "llm_max_output_tokens": self.llm_max_output_tokens,
+            "llm_max_retries": self.llm_max_retries,
+            "deepseek_api_key": (
+                "**********" if self.deepseek_api_key is not None else "not_configured"
+            ),
         }
 
 

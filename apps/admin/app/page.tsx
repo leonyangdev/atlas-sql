@@ -2,6 +2,12 @@ import Link from "next/link";
 
 const modules = [
   {
+    href: "/traces",
+    label: "查询 Trace",
+    desc: "定位生成、校验和执行失败并进行人工归因",
+    ready: true,
+  },
+  {
     href: "/datasources",
     label: "数据源",
     desc: "登记、测试和管理被分析的数据库连接",

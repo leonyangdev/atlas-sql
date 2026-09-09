@@ -1,0 +1,32 @@
+# V1 锁定测试集的首次人工复核。标签针对题目语义，不依赖某一次随机 trace_id。
+# 当模型版本或 Prompt 变化后必须重新运行并复核，不能沿用本文件宣称新的成绩。
+test-009:
+  category: wrong_join
+  note: 订单明细与退款直接连接产生扇出，且门店集合与 Gold 不一致。
+test-010:
+  category: wrong_value
+  note: 未把“退款原因可由 refund_status 推断”映射为按 refund_status 分组。
+test-012:
+  category: undetermined
+  note: 模型要求澄清一个基线题已明确给出的区域和排名范围，未产生可进一步定位的 SQL。
+test-013:
+  category: wrong_aggregation
+  note: 客单价中间聚合重复且查询执行失败，未遵循净销售额除以去重订单量的口径。
+test-015:
+  category: wrong_time
+  note: 时间窗生成到 2027-01-01，而锁定业务时钟只覆盖 2026 上半年。
+test-018:
+  category: wrong_column
+  note: 使用不存在的 fact_order.order_id，并错误地从 net_amount 再减 tax_amount。
+test-021:
+  category: wrong_value
+  note: 未将题目明确给出的 GMV 映射到含税 gross_amount。
+test-022:
+  category: wrong_metric
+  note: 只返回退款金额，没有按净销售额分母计算整体退款率。
+test-023:
+  category: wrong_metric
+  note: 对净销售额再次扣减退款并自行添加起始日期，偏离 Gold 指标口径。
+test-030:
+  category: undetermined
+  note: V1 只有身份传递，还没有 V4 行级授权策略；当前未按门店经理身份拒绝越权查询。

@@ -112,6 +112,35 @@ services:
       retries: 10
     restart: unless-stopped
 
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.0.0
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:5601/api/status >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
+  attu:
+    image: zilliz/attu:v2.5
+    environment:
+      MILVUS_URL: milvus:19530
+    ports:
+      - "8080:3000"
+    depends_on:
+      milvus:
+        condition: service_healthy
+    restart: unless-stopped
+
   milvus:
     image: milvusdb/milvus:v3.0.0
     command: ["milvus", "run", "standalone"]

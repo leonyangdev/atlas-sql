@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 # 导入所有 ORM 模型，使 Alembic 能通过 Base.metadata 感知全部表定义
 import server.datasource.models  # noqa: F401
+import server.observability.failure  # noqa: F401
+import server.query.models  # noqa: F401
 import server.search.index_status  # noqa: F401
 from server.config import get_settings
 from server.db import Base, sqlalchemy_url
