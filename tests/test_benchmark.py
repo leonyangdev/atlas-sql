@@ -69,9 +69,9 @@ def test_all_questions_have_gold_sql_or_expected_action() -> None:
     for split_name in ("train", "tune", "test"):
         split = load_split(BENCHMARK_DIR / f"{split_name}.yaml")
         for q in split.questions:
-            assert (
-                q.gold_sql is not None or q.expected_action is not None
-            ), f"question {q.id} has neither gold_sql nor expected_action"
+            assert q.gold_sql is not None or q.expected_action is not None, (
+                f"question {q.id} has neither gold_sql nor expected_action"
+            )
 
 
 def test_ordered_questions_have_gold_sql() -> None:
@@ -101,9 +101,18 @@ def test_train_covers_required_categories() -> None:
     split = load_split(BENCHMARK_DIR / "train.yaml")
     categories = {q.category for q in split.questions}
     required = {
-        "single_table", "join", "aggregation", "top_n",
-        "time", "time_yoy", "value_mapping", "metric",
-        "ambiguous", "permission_violation", "permission_row", "permission_column",
+        "single_table",
+        "join",
+        "aggregation",
+        "top_n",
+        "time",
+        "time_yoy",
+        "value_mapping",
+        "metric",
+        "ambiguous",
+        "permission_violation",
+        "permission_row",
+        "permission_column",
     }
     missing = required - categories
     assert not missing, f"missing categories in train: {missing}"
@@ -114,9 +123,17 @@ def test_test_covers_required_categories() -> None:
     split = load_split(BENCHMARK_DIR / "test.yaml")
     categories = {q.category for q in split.questions}
     required = {
-        "single_table", "join", "aggregation", "top_n",
-        "time", "value_mapping", "metric",
-        "ambiguous", "permission_violation", "permission_row", "permission_column",
+        "single_table",
+        "join",
+        "aggregation",
+        "top_n",
+        "time",
+        "value_mapping",
+        "metric",
+        "ambiguous",
+        "permission_violation",
+        "permission_row",
+        "permission_column",
     }
     missing = required - categories
     assert not missing, f"missing categories in test: {missing}"
@@ -128,8 +145,9 @@ def test_reject_questions_have_rejection_reason() -> None:
         split = load_split(BENCHMARK_DIR / f"{split_name}.yaml")
         for q in split.questions:
             if q.expected_action in ("reject", "clarify"):
-                assert q.rejection_reason is not None or q.clarification_hint is not None, \
+                assert q.rejection_reason is not None or q.clarification_hint is not None, (
                     f"question {q.id}: {q.expected_action} action without reason/hint"
+                )
 
 
 # ---------------------------------------------------------------------------

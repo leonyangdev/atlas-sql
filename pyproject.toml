@@ -39,6 +39,17 @@ addopts = "--strict-markers --strict-config"
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+omit = [
+  # Celery 后台任务：依赖 Redis + Worker 进程，需集成测试，V2 补齐
+  "server/tasks/*",
+  # Gold SQL 执行器：需业务库 + Gold 题库联动，V2 基线脚本覆盖
+  "server/evaluation/gold_executor.py",
+  # CLI 脚本：入口胶水代码，不含业务逻辑
+  "scripts/*",
+  "datasets/migrations.py",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

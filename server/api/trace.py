@@ -108,9 +108,7 @@ async def review_trace(
 
 
 async def _get_record(session: AsyncSession, trace_id: uuid.UUID) -> QueryRecord:
-    result = await session.execute(
-        select(QueryRecord).where(QueryRecord.trace_id == str(trace_id))
-    )
+    result = await session.execute(select(QueryRecord).where(QueryRecord.trace_id == str(trace_id)))
     record = result.scalar_one_or_none()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="trace not found")

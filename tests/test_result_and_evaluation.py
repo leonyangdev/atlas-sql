@@ -117,8 +117,15 @@ async def test_baseline_report_has_denominators_latency_and_tokens() -> None:
 def test_failure_categories_include_required_manual_label() -> None:
     assert FailureCategory("undetermined") == FailureCategory.UNDETERMINED
     assert {item.value for item in FailureCategory} >= {
-        "wrong_table", "wrong_column", "wrong_join", "wrong_value", "wrong_metric",
-        "wrong_time", "wrong_aggregation", "syntax_error", "undetermined",
+        "wrong_table",
+        "wrong_column",
+        "wrong_join",
+        "wrong_value",
+        "wrong_metric",
+        "wrong_time",
+        "wrong_aggregation",
+        "syntax_error",
+        "undetermined",
     }
 
 

@@ -41,9 +41,7 @@ class SafeQueryPipeline:
             QueryStageTrace(
                 name="generation",
                 status=(
-                    "succeeded"
-                    if generated.status == QueryStatus.PROCESSING
-                    else generated.status
+                    "succeeded" if generated.status == QueryStatus.PROCESSING else generated.status
                 ),
                 duration_ms=generation_ms,
             )

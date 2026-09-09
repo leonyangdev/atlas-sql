@@ -106,9 +106,7 @@ def load_split(path: Path) -> BenchmarkSplit:
             expected_action = None
 
         if gold_sql is None and expected_action is None:
-            raise ValueError(
-                f"question {qid}: must have either gold_sql or expected_action"
-            )
+            raise ValueError(f"question {qid}: must have either gold_sql or expected_action")
 
         is_ordered = bool(q.get("is_ordered", False))
         metric_ids = q.get("metric_ids") or []
