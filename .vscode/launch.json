@@ -5,7 +5,7 @@
       "name": "Backend API (FastAPI :8000)",
       "type": "debugpy",
       "request": "launch",
-      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "python": "${workspaceFolder}/.venv/bin/python",
       "module": "uvicorn",
       "args": [
         "server.api.app:create_app",

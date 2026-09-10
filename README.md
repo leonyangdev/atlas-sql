@@ -193,6 +193,15 @@ uv run python scripts/seed_data.py --profile dev --reset --confirm-database nova
 #    本地开发用脚本一键完成；生产环境通过管理后台或 Admin API 操作（见下方说明）。
 export $(grep -v '^#' .env.atlas | xargs) && uv run python scripts/setup_datasource.py
 
+VSCode F5 启动
+```
+// windows
+"python": "${workspaceFolder}/.venv/Scripts/python.exe"
+
+// macos
+"python": "${workspaceFolder}/.venv/bin/python",
+```
+
 # 8. 启动后端 API（会自动拉起 Celery worker，无需单独启动）
 uv run uvicorn server.api.app:create_app --factory --reload --port 8000
 
