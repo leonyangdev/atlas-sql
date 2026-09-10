@@ -3,6 +3,8 @@
 应用通过工厂函数创建，测试可以注入配置和健康检查器，不需要启动真实基础设施。
 """
 
+import subprocess
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -36,11 +38,20 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        """统一释放控制库和业务库连接池。"""
+        """启动 Celery worker 子进程，并在关闭时一并回收。
 
-        yield
-        await query_pipeline.close()
-        await engine.dispose()
+        worker 与 API 进程共享同一套环境变量（包括 .env.atlas 中的配置），
+        不需要单独启动，也不会在测试中启动（测试通过注入 settings 绕过此分支）。
+        """
+        worker_proc = _start_celery_worker(runtime_settings)
+        try:
+            yield
+        finally:
+            await query_pipeline.close()
+            await engine.dispose()
+            if worker_proc is not None:
+                worker_proc.terminate()
+                worker_proc.wait(timeout=10)
 
     app = FastAPI(
         title="AtlasSQL API",
@@ -109,3 +120,79 @@ def create_app(
         )
 
     return app
+
+
+def _start_celery_worker(settings: Settings) -> "subprocess.Popen[bytes] | None":
+    """在子进程中启动 Celery worker，失败时只记录警告，不阻断 API 启动。
+
+    设计原则：
+    - 测试环境（ATLAS_SKIP_WORKER=1）不启动 worker，避免在 pytest 中产生无关的子进程。
+    - 明确使用 venv 目录下的 Python，而不是 sys.executable，
+      防止 VS Code debugpy 在 Windows 下把 sys.executable 指向系统 Python 导致 worker
+      找不到依赖、prefetch 任务后立即崩溃、任务卡在 unacked 状态。
+    - Windows 不支持 fork，必须使用 --pool=solo 或 --pool=threads。
+    - stdout/stderr 直接打印到同一个终端，方便本地调试。
+    """
+    import logging
+    import os
+    from pathlib import Path
+
+    logger = logging.getLogger(__name__)
+
+    if os.environ.get("ATLAS_SKIP_WORKER") == "1":
+        return None
+
+    # 找到 venv 里的 Python 可执行文件（与当前运行环境解耦）
+    venv_python = _find_venv_python()
+    if venv_python is None:
+        logger.warning("Cannot find venv Python, skipping Celery worker startup")
+        return None
+
+    try:
+        proc = subprocess.Popen(
+            [
+                str(venv_python),
+                "-m", "celery",
+                "-A", "server.tasks.celery_app:celery_app",
+                "worker",
+                "--loglevel=info",
+                "--concurrency=2",
+                "--pool=solo",       # Windows 不支持 fork，solo 模式最稳定
+                "--without-heartbeat",
+            ],
+            env=os.environ.copy(),
+        )
+        logger.info("Celery worker started (pid=%d, python=%s)", proc.pid, venv_python)
+        return proc
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to start Celery worker: %s", exc)
+        return None
+
+
+def _find_venv_python() -> "Path | None":
+    """找到当前项目 venv 的 Python 可执行文件路径。
+
+    优先顺序：
+    1. 环境变量 VIRTUAL_ENV（激活 venv 时由 activate 脚本设置）
+    2. 当前文件向上查找 .venv 目录
+    """
+    import os
+    from pathlib import Path
+
+    # 方式 1：VIRTUAL_ENV 环境变量
+    venv_dir = os.environ.get("VIRTUAL_ENV")
+    if venv_dir:
+        for candidate in ["Scripts/python.exe", "bin/python"]:
+            p = Path(venv_dir) / candidate
+            if p.exists():
+                return p
+
+    # 方式 2：从 app.py 所在目录向上查找 .venv
+    here = Path(__file__).resolve()
+    for parent in [here.parent, here.parent.parent, here.parent.parent.parent]:
+        for candidate in [".venv/Scripts/python.exe", ".venv/bin/python"]:
+            p = parent / candidate
+            if p.exists():
+                return p
+
+    return None

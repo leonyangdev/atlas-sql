@@ -10,6 +10,7 @@ altassql-book/reference/project.md
 !.env.example
 .env.atlas
 .venv/
+.idea/
 __pycache__/
 .pytest_cache/
 .mypy_cache/

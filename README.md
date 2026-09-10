@@ -161,32 +161,42 @@ AtlasSQL 是一个**企业级 NL2SQL 平台**，同时被设计为三种用途�
 
 **环境依赖：** Python 3.12+、[uv](https://docs.astral.sh/uv/)、Node.js 22+、Docker Compose
 
+> **重建环境说明：** 如果执行过 `docker compose down -v`（带 `-v` 删除数据卷），第 4-7 步需要重新执行。仅重启容器（`docker compose restart`）不需要重跑。
+
 ```bash
-# 克隆并配置环境变量
+# 1. 克隆并配置环境变量
 git clone https://github.com/leonyangdev/atlas-sql.git
 cd atlas-sql
 cp .env.example .env.atlas
+# 根据需要编辑 .env.atlas，本地开发默认值即可直接使用
 
-# 安装依赖
+# 2. 安装依赖
 uv sync --locked --all-groups
 npm ci
 
-# 启动基础设施
-# PostgreSQL × 2、Redis、OpenSearch、Milvus
-# 可视化工具：OpenSearch Dashboards（:5601）、Attu / Milvus（:8080）
+# 3. 启动基础设施（PostgreSQL × 2、Redis、OpenSearch、Milvus）
+# 可视化工具：OpenSearch Dashboards（:5601）、Attu / Milvus GUI（:8080）
 docker compose --env-file .env.atlas up -d
 
-# 初始化数据库
+# 4. 初始化控制库（AtlasSQL 自己的数据库：元数据、问数记录等）
 uv run alembic upgrade head
+
+# 5. 初始化业务库（NovaRetail 模拟数据库：建表 + 创建只读角色）
+#    migrate_business.py 会幂等地创建 atlas_reader 角色，不依赖 Docker init 脚本
 uv run python scripts/migrate_business.py
 
-# 生成模拟数据（tiny 用于开发，scale 用于验收）
-uv run python scripts/seed_data.py --profile tiny --reset --confirm-database nova_retail
+# 6. 生成模拟数据（dev 约 10 万行，适合日常开发；scale 约 100 万行，用于验收）
+uv run python scripts/seed_data.py --profile dev --reset --confirm-database nova_retail
 
-# 启动后端 API
+# 7. 采集业务库元数据到控制库
+#    这一步让 AtlasSQL 知道业务库里有哪些表和字段，是问数功能的前提。
+#    本地开发用脚本一键完成；生产环境通过管理后台或 Admin API 操作（见下方说明）。
+export $(grep -v '^#' .env.atlas | xargs) && uv run python scripts/setup_datasource.py
+
+# 8. 启动后端 API（会自动拉起 Celery worker，无需单独启动）
 uv run uvicorn server.api.app:create_app --factory --reload --port 8000
 
-# 启动前端（用户端 :3000，管理后台 :3001）
+# 9. 启动前端（用户端 :3000，管理后台 :3001）
 npm run dev:web
 npm run dev:admin
 ```
@@ -207,6 +217,49 @@ curl http://127.0.0.1:8000/health/ready
 | OpenSearch Dashboards | http://127.0.0.1:5601 | 元数据索引可视化 |
 | Attu（Milvus GUI） | http://127.0.0.1:8080 | 向量集合可视化，连接地址填 `localhost:19530` |
 | MinIO 控制台 | http://127.0.0.1:9001 | 对象存储，账号 `minioadmin` / `minioadmin` |
+
+---
+
+## 元数据采集说明
+
+AtlasSQL 需要知道业务库里有哪些表和字段，才能理解自然语言问题。这份"认知"存在控制库的 `table_metadata` / `column_metadata` 表中，通过**元数据采集**写入。
+
+### 本地开发
+
+第 7 步的 `setup_datasource.py` 自动完成：注册数据源 → 连接业务库扫描所有表和列 → 写入控制库。重建环境后重跑即可。
+
+### 生产环境
+
+#### 第一步：登记数据源（只做一次）
+
+打开管理后台（`:3001`）→ **数据源管理** → 点 **+ 登记数据源**，填写数据库连接信息和管理员 Token 后提交。
+
+`credential_ref` 填 `env:ATLAS_BUSINESS_OWNER_DATABASE_URL`，系统采集时从后端环境变量读取真实连接串，密码不进数据库。
+
+#### 第二步：触发采集
+
+登记成功后自动跳转到详情页，也可以从数据源列表进入。
+
+1. 在"管理员 Token"框填入 `ATLAS_ADMIN_TOKEN` 的值
+2. 点**测试连接**，确认返回"连接成功"
+3. 点**触发同步**，系统派发后台任务开始采集
+
+#### 第三步：确认采集完成
+
+刷新详情页，在"同步任务（最近 20 次）"表格里查看状态：
+
+| 状态 | 含义 |
+|------|------|
+| `pending` | 任务已入队，等待 worker 执行 |
+| `running` | 正在采集 |
+| `succeeded` | 完成，表数和列数会显示 |
+| `failed` | 失败，错误原因在"错误"列 |
+
+采集完成后，详情页下方"元数据"链接可直接浏览所有已采集的表和列。
+
+#### 业务库结构变更后
+
+每次在业务库新增或删除表，重进管理后台 → 数据源详情 → 触发同步。已有表的人工注释（business_name、description 等）不会被覆盖。
 
 **本地质量检查：**
 

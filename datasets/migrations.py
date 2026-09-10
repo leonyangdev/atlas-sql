@@ -85,12 +85,13 @@ async def apply_migrations(
     database_url: str,
     root: Path = MIGRATION_ROOT,
     reader_role: str | None = None,
+    reader_password: str | None = None,
 ) -> list[MigrationResult]:
     """串行执行尚未应用的迁移，并在每次运行后修复 reader 授权。
 
     advisory lock 防止两个开发进程同时迁移。已执行迁移的 SHA-256 必须保持不变；需要修改
     schema 时应新增版本，而不是重写历史。reader 授权放在迁移器里，可以覆盖已有 Docker
-    命名卷和先初始化角色、后建表两种顺序。
+    命名卷和先初始化角色、后建表两种顺序。reader_password 仅在角色不存在时用于创建角色。
     """
 
     connection = await asyncpg.connect(
@@ -134,7 +135,25 @@ async def apply_migrations(
                 results.append(MigrationResult(version, "applied"))
         if reader_role is not None:
             role = quote_identifier(reader_role)
+            # 角色不存在时自动创建，保证 migrate_business.py 可以在全新数据卷上独立运行，
+            # 不依赖 Docker init 脚本的执行顺序。密码从 ATLAS_BUSINESS_DATABASE_URL 中提取。
+            role_exists = await connection.fetchval(
+                "SELECT 1 FROM pg_roles WHERE rolname = $1", reader_role
+            )
+            if not role_exists:
+                # 从调用方传入的 reader_password 创建角色；未传入时使用占位符（不可登录）
+                if reader_password is not None:
+                    safe_password = reader_password.replace("'", "''")
+                    await connection.execute(
+                        f"CREATE ROLE {role} LOGIN PASSWORD '{safe_password}'"
+                    )
+                    await connection.execute(
+                        f"ALTER ROLE {role} SET default_transaction_read_only = on"
+                    )
+                else:
+                    await connection.execute(f"CREATE ROLE {role} NOLOGIN")
             await connection.execute("REVOKE CREATE ON SCHEMA public FROM PUBLIC")
+            await connection.execute(f"GRANT CONNECT ON DATABASE nova_retail TO {role}")
             await connection.execute(f"GRANT USAGE ON SCHEMA public TO {role}")
             await connection.execute(f"GRANT SELECT ON ALL TABLES IN SCHEMA public TO {role}")
             await connection.execute(

@@ -160,11 +160,13 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
+      # v3.0.0 引入了 streamingnode，首次启动所有内部组件需要 90-120 秒完成注册。
+      # start_period 内的失败不计入 retries，给足初始化时间即可。
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 10s
       timeout: 5s
       retries: 15
-      start_period: 40s
+      start_period: 120s
     restart: unless-stopped
 
 volumes:
