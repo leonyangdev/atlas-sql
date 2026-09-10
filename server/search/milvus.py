@@ -45,8 +45,12 @@ class MilvusRetriever:
 
     # Milvus 返回的标量字段
     DEFAULT_OUTPUT_FIELDS = [
-        "doc_id", "object_type", "domain",
-        "datasource_id", "metadata_version", "embedding_model_version",
+        "doc_id",
+        "object_type",
+        "domain",
+        "datasource_id",
+        "metadata_version",
+        "embedding_model_version",
     ]
 
     def __init__(
@@ -85,9 +89,7 @@ class MilvusRetriever:
         # 编码查询向量（在线程池中执行，避免阻塞事件循环）
         try:
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None, self._embedding.embed_batch, [query]
-            )
+            results = await loop.run_in_executor(None, self._embedding.embed_batch, [query])
             query_vector = results[0].dense
         except Exception as exc:
             logger.error("Embedding failed: %s", exc)
@@ -118,10 +120,11 @@ class MilvusRetriever:
                 ),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Milvus schema search timeout (%.1fs), datasource_id=%d",
-                self._timeout, datasource_id,
+                self._timeout,
+                datasource_id,
             )
             return SearchResult(
                 candidates=[],
@@ -155,9 +158,7 @@ class MilvusRetriever:
         """Dense 检索相似的已验证查询。"""
         try:
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None, self._embedding.embed_batch, [query]
-            )
+            results = await loop.run_in_executor(None, self._embedding.embed_batch, [query])
             query_vector = results[0].dense
         except Exception as exc:
             logger.error("Embedding failed for verified_queries: %s", exc)
@@ -180,7 +181,7 @@ class MilvusRetriever:
                 ),
                 timeout=self._timeout,
             )
-        except (asyncio.TimeoutError, Exception) as exc:
+        except (TimeoutError, Exception) as exc:
             logger.warning("Milvus verified_queries search error: %s", exc)
             return SearchResult(candidates=[], status=RetrievalStatus.DEGRADED)
 
@@ -296,8 +297,12 @@ class FakeMilvusCollection:
             def __init__(self, c: Candidate) -> None:
                 self.id = c.doc_id
                 self.distance = c.score
-                self.entity = {**c.payload, "object_type": c.object_type,
-                               "domain": c.domain, "datasource_id": c.datasource_id}
+                self.entity = {
+                    **c.payload,
+                    "object_type": c.object_type,
+                    "domain": c.domain,
+                    "datasource_id": c.datasource_id,
+                }
 
         self._responses.append([_FakeHit(c) for c in candidates])
 

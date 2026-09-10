@@ -74,9 +74,7 @@ class OpenSearchRetriever:
         确保不同授权范围的用户检索结果不会交叉。
         """
         # 构造 filter 子句（必须满足的条件，不影响 BM25 评分）
-        filters: list[dict[str, Any]] = [
-            {"term": {"datasource_id": datasource_id}}
-        ]
+        filters: list[dict[str, Any]] = [{"term": {"datasource_id": datasource_id}}]
         if allowed_domains:
             filters.append({"terms": {"domain": allowed_domains}})
         if metadata_version:
@@ -122,10 +120,11 @@ class OpenSearchRetriever:
                 ),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "OpenSearch schema search timeout (%.1fs), datasource_id=%d",
-                self._timeout, datasource_id,
+                self._timeout,
+                datasource_id,
             )
             return SearchResult(
                 candidates=[],
@@ -209,7 +208,7 @@ class OpenSearchRetriever:
                 ),
                 timeout=self._timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return SearchResult(
                 candidates=[],
                 status=RetrievalStatus.DEGRADED,
@@ -225,7 +224,9 @@ class OpenSearchRetriever:
             )
 
         candidates = _parse_hits(response, source=CandidateSource.BM25)
-        return SearchResult(candidates=candidates, status=RetrievalStatus.OK, bm25_count=len(candidates))
+        return SearchResult(
+            candidates=candidates, status=RetrievalStatus.OK, bm25_count=len(candidates)
+        )
 
     async def search_verified_queries(
         self,
@@ -266,7 +267,7 @@ class OpenSearchRetriever:
                 ),
                 timeout=self._timeout,
             )
-        except (asyncio.TimeoutError, Exception) as exc:
+        except (TimeoutError, Exception) as exc:
             logger.warning("OpenSearch verified_queries search error: %s", exc)
             return SearchResult(candidates=[], status=RetrievalStatus.DEGRADED)
 

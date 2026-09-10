@@ -34,11 +34,13 @@ logger = logging.getLogger(__name__)
 
 # 必需字段关键词：包含这些标记的字段不会因低分被裁掉
 # 对应 document_id.py 中 payload 的字段名
-_REQUIRED_FIELD_MARKERS = frozenset({
-    # 主键、外键是 JOIN 必须的连接键
-    "is_primary_key",
-    "foreign_key_ref",
-})
+_REQUIRED_FIELD_MARKERS = frozenset(
+    {
+        # 主键、外键是 JOIN 必须的连接键
+        "is_primary_key",
+        "foreign_key_ref",
+    }
+)
 
 
 class BaseReranker(ABC):
@@ -156,16 +158,14 @@ class BGEReranker(BaseReranker):
 
         # 按分数降序排列
         scored = sorted(
-            zip(scores, candidates),
+            zip(scores, candidates, strict=False),
             key=lambda x: x[0],
             reverse=True,
         )
 
         from dataclasses import replace
-        ranked = [
-            replace(c, score=float(s), source=CandidateSource.RERANKED)
-            for s, c in scored
-        ]
+
+        ranked = [replace(c, score=float(s), source=CandidateSource.RERANKED) for s, c in scored]
 
         return self._ensure_required_fields(ranked, candidates, top_n)
 
@@ -196,6 +196,7 @@ class FakeReranker(BaseReranker):
     ) -> list[Candidate]:
         """按 score 降序（可通过 score_override 调整）返回。"""
         from dataclasses import replace
+
         self.rerank_calls.append({"query": query, "count": len(candidates)})
 
         scored = []

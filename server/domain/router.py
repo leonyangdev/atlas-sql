@@ -36,35 +36,82 @@ from server.domain.intent import (
 # 每个业务域的强触发词；出现一次则该域得分 +weight
 _DOMAIN_KEYWORDS: dict[str, list[tuple[str, float]]] = {
     "sales": [
-        ("销售", 1.0), ("订单", 1.0), ("销量", 0.9), ("销售额", 1.0),
-        ("GMV", 0.9), ("净销售", 1.0), ("付款", 0.8), ("退款", 0.7),
-        ("客单价", 0.8), ("有效订单", 0.9), ("苹果手机", 0.6),
-        ("手机", 0.4), ("商品", 0.5), ("SKU", 0.8), ("品类", 0.5),
-        ("订单量", 1.0), ("销售数量", 0.9),
+        ("销售", 1.0),
+        ("订单", 1.0),
+        ("销量", 0.9),
+        ("销售额", 1.0),
+        ("GMV", 0.9),
+        ("净销售", 1.0),
+        ("付款", 0.8),
+        ("退款", 0.7),
+        ("客单价", 0.8),
+        ("有效订单", 0.9),
+        ("苹果手机", 0.6),
+        ("手机", 0.4),
+        ("商品", 0.5),
+        ("SKU", 0.8),
+        ("品类", 0.5),
+        ("订单量", 1.0),
+        ("销售数量", 0.9),
     ],
     "product": [
-        ("商品", 0.7), ("SKU", 0.9), ("品类", 0.8), ("品牌", 0.9),
-        ("产品", 0.7), ("上架", 0.8), ("库存", 0.5), ("规格", 0.8),
+        ("商品", 0.7),
+        ("SKU", 0.9),
+        ("品类", 0.8),
+        ("品牌", 0.9),
+        ("产品", 0.7),
+        ("上架", 0.8),
+        ("库存", 0.5),
+        ("规格", 0.8),
     ],
     "customer": [
-        ("客户", 1.0), ("会员", 0.9), ("用户", 0.8), ("新客", 0.9),
-        ("老客", 0.9), ("复购", 0.9), ("活跃客户", 1.0), ("流失", 0.8),
+        ("客户", 1.0),
+        ("会员", 0.9),
+        ("用户", 0.8),
+        ("新客", 0.9),
+        ("老客", 0.9),
+        ("复购", 0.9),
+        ("活跃客户", 1.0),
+        ("流失", 0.8),
     ],
     "store": [
-        ("门店", 1.0), ("店铺", 0.9), ("城市", 0.7), ("区域", 0.4),
-        ("华东", 0.5), ("华南", 0.5), ("华北", 0.5), ("华西", 0.5),
+        ("门店", 1.0),
+        ("店铺", 0.9),
+        ("城市", 0.7),
+        ("区域", 0.4),
+        ("华东", 0.5),
+        ("华南", 0.5),
+        ("华北", 0.5),
+        ("华西", 0.5),
     ],
     "inventory": [
-        ("库存", 1.0), ("仓库", 1.0), ("盘点", 1.0), ("补货", 0.9),
-        ("调拨", 0.9), ("库存快照", 1.0), ("库存流水", 1.0),
+        ("库存", 1.0),
+        ("仓库", 1.0),
+        ("盘点", 1.0),
+        ("补货", 0.9),
+        ("调拨", 0.9),
+        ("库存快照", 1.0),
+        ("库存流水", 1.0),
     ],
     "finance": [
-        ("财务", 1.0), ("成本", 0.9), ("毛利", 1.0), ("利润", 0.9),
-        ("毛利率", 1.0), ("营收", 0.8), ("收入", 0.7), ("账期", 0.9),
+        ("财务", 1.0),
+        ("成本", 0.9),
+        ("毛利", 1.0),
+        ("利润", 0.9),
+        ("毛利率", 1.0),
+        ("营收", 0.8),
+        ("收入", 0.7),
+        ("账期", 0.9),
     ],
     "marketing": [
-        ("营销", 1.0), ("活动", 0.7), ("优惠券", 0.9), ("渠道", 0.9),
-        ("投放", 1.0), ("触达", 1.0), ("ROI", 0.8), ("转化率", 0.7),
+        ("营销", 1.0),
+        ("活动", 0.7),
+        ("优惠券", 0.9),
+        ("渠道", 0.9),
+        ("投放", 1.0),
+        ("触达", 1.0),
+        ("ROI", 0.8),
+        ("转化率", 0.7),
     ],
 }
 
@@ -80,8 +127,8 @@ _RELATED_DOMAINS: dict[str, list[str]] = {
 }
 
 # 置信度阈值
-_HIGH_CONFIDENCE = 0.6   # 直接路由
-_LOW_CONFIDENCE = 0.25   # 需要澄清
+_HIGH_CONFIDENCE = 0.6  # 直接路由
+_LOW_CONFIDENCE = 0.25  # 需要澄清
 
 # ──────────────────────────────────────────────
 # 意图类型关键词
@@ -96,9 +143,7 @@ _COMPARISON_PATTERNS = re.compile(
 _TREND_PATTERNS = re.compile(
     r"(趋势|走势|变化|每[月日周年季]|月度|季度|年度|逐[月日年])", re.IGNORECASE
 )
-_DETAIL_PATTERNS = re.compile(
-    r"(列出|列举|哪些|明细|清单|show|list|detail)", re.IGNORECASE
-)
+_DETAIL_PATTERNS = re.compile(r"(列出|列举|哪些|明细|清单|show|list|detail)", re.IGNORECASE)
 
 # ──────────────────────────────────────────────
 # 已知指标关键词（快速识别，不做精确链接）
@@ -143,6 +188,7 @@ _KNOWN_DIMENSIONS: dict[str, str] = {
 # 时间解析
 # ──────────────────────────────────────────────
 
+
 def _parse_time_range(question: str, now: date) -> TimeRange | None:
     """从问题中提取时间范围。
 
@@ -174,7 +220,9 @@ def _parse_time_range(question: str, now: date) -> TimeRange | None:
         # 同比则比较去年
         comparison = _yoy_range(start, end) if re.search(r"同比", question) else None
         return TimeRange(
-            start=start, end=end, label=label,
+            start=start,
+            end=end,
+            label=label,
             comparison_start=comparison[0] if comparison else None,
             comparison_end=comparison[1] if comparison else None,
         )
@@ -192,7 +240,9 @@ def _parse_time_range(question: str, now: date) -> TimeRange | None:
         label = "本月"
         comparison = _mom_range(start, end) if re.search(r"环比", question) else None
         return TimeRange(
-            start=start, end=end, label=label,
+            start=start,
+            end=end,
+            label=label,
             comparison_start=comparison[0] if comparison else None,
             comparison_end=comparison[1] if comparison else None,
         )
@@ -231,6 +281,7 @@ def _parse_time_range(question: str, now: date) -> TimeRange | None:
     if m_near_days:
         n = int(m_near_days.group(1))
         from datetime import timedelta
+
         end = now
         start = now - timedelta(days=n - 1)
         return TimeRange(start=start, end=end, label=f"近{n}天")
@@ -250,7 +301,9 @@ def _parse_time_range(question: str, now: date) -> TimeRange | None:
         end = now
         comparison = _yoy_range(start, end)
         return TimeRange(
-            start=start, end=end, label="今年至今",
+            start=start,
+            end=end,
+            label="今年至今",
             comparison_start=comparison[0],
             comparison_end=comparison[1],
         )
@@ -291,9 +344,14 @@ def _mom_range(start: date, end: date) -> tuple[date, date]:
 
 # 区域关键词：出现则添加 region 过滤
 _REGION_FILTERS: dict[str, str] = {
-    "华东": "华东", "华南": "华南", "华北": "华北",
-    "华西": "华西", "华中": "华中", "东北": "东北",
-    "西南": "西南", "西北": "西北",
+    "华东": "华东",
+    "华南": "华南",
+    "华北": "华北",
+    "华西": "华西",
+    "华中": "华中",
+    "东北": "东北",
+    "西南": "西南",
+    "西北": "西北",
 }
 
 
@@ -312,6 +370,7 @@ def _extract_filters(question: str) -> list[FilterCondition]:
 # ──────────────────────────────────────────────
 # 公开接口
 # ──────────────────────────────────────────────
+
 
 class DomainRouter:
     """将自然语言问题路由到业务域并提取结构化意图。
@@ -410,9 +469,7 @@ class DomainRouter:
                 scores[domain] = score
         return scores
 
-    def _select_primary(
-        self, scores: dict[str, float]
-    ) -> tuple[str | None, dict[str, float]]:
+    def _select_primary(self, scores: dict[str, float]) -> tuple[str | None, dict[str, float]]:
         """选择得分最高的主域，并加入必要关联域。
 
         关联域的置信度设为主域的 60%，但最高不超过 0.5，表示"可能需要关联"。
@@ -423,8 +480,7 @@ class DomainRouter:
         # 归一化到 [0, 1]
         max_score = max(scores.values())
         normalized: dict[str, float] = {
-            d: min(1.0, s / max(max_score, 1.0))
-            for d, s in scores.items()
+            d: min(1.0, s / max(max_score, 1.0)) for d, s in scores.items()
         }
 
         # 主域 = 得分最高的域
@@ -436,9 +492,7 @@ class DomainRouter:
                 normalized[related] = min(0.5, normalized[primary] * 0.6)
 
         # 按得分降序排列
-        candidates = dict(
-            sorted(normalized.items(), key=lambda x: x[1], reverse=True)
-        )
+        candidates = dict(sorted(normalized.items(), key=lambda x: x[1], reverse=True))
         return primary, candidates
 
     def _detect_intent_type(self, question: str) -> IntentType:
@@ -463,9 +517,7 @@ class DomainRouter:
         # 按词长降序匹配，防止"净销售额"被"销售额"先截断
         for text in sorted(_KNOWN_METRICS, key=len, reverse=True):
             if text in question and text not in seen:
-                mentions.append(
-                    MetricMention(text=text, resolved_metric_id=_KNOWN_METRICS[text])
-                )
+                mentions.append(MetricMention(text=text, resolved_metric_id=_KNOWN_METRICS[text]))
                 seen.add(text)
         # 歧义指标（如"收入"）也收集，标记 unresolved
         for text in _AMBIGUOUS_METRIC_TEXTS:
@@ -494,9 +546,7 @@ class DomainRouter:
             return int(m.group(1))
         return None
 
-    def _find_unresolved(
-        self, question: str, metric_mentions: list[MetricMention]
-    ) -> list[str]:
+    def _find_unresolved(self, question: str, metric_mentions: list[MetricMention]) -> list[str]:
         """返回歧义指标文本（resolved_metric_id 为 None 的那些）。"""
         return [m.text for m in metric_mentions if m.resolved_metric_id is None]
 
@@ -507,7 +557,7 @@ class DomainRouter:
         candidates: dict[str, float],
         metric_mentions: list[MetricMention],
         unresolved: list[str],
-        time_range: "TimeRange | None",  # noqa: F821
+        time_range: TimeRange | None,  # noqa: F821
         question: str,
     ) -> tuple[bool, str | None]:
         """判断是否需要向用户澄清，并生成提示语。
@@ -531,7 +581,10 @@ class DomainRouter:
         has_resolved = any(m.resolved_metric_id is not None for m in metric_mentions)
         if unresolved and not has_resolved:
             names = "、".join(unresolved)
-            return True, f'"{names}"可能对应多种指标，您希望查询哪个？例如：销售额、毛利率、客户数？'
+            return (
+                True,
+                f'"{names}"可能对应多种指标，您希望查询哪个？例如：销售额、毛利率、客户数？',
+            )
 
         # 条件 4：没有任何指标提及，问题过于宽泛
         if not metric_mentions and not unresolved:

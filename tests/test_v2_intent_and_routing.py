@@ -17,19 +17,18 @@ from datetime import date
 import pytest
 
 from server.domain.intent import (
+    FilterCondition,
     IntentType,
+    MetricMention,
     QueryIntent,
     TimeRange,
-    FilterCondition,
-    MetricMention,
-    DimensionMention,
 )
 from server.domain.router import DomainRouter, _parse_time_range
-
 
 # ──────────────────────────────────────────────
 # 辅助工具
 # ──────────────────────────────────────────────
+
 
 def make_router() -> DomainRouter:
     return DomainRouter()
@@ -41,6 +40,7 @@ NOW = date(2026, 9, 10)
 # ──────────────────────────────────────────────
 # T01: QueryIntent 数据类测试
 # ──────────────────────────────────────────────
+
 
 class TestQueryIntentModel:
     """确认 QueryIntent 的所有字段类型和默认值正确。"""
@@ -92,6 +92,7 @@ class TestQueryIntentModel:
 # ──────────────────────────────────────────────
 # T02: 时间解析
 # ──────────────────────────────────────────────
+
 
 class TestTimeRangeParsing:
     """_parse_time_range 的各种表达式解析。"""
@@ -165,6 +166,7 @@ class TestTimeRangeParsing:
 
     def test_parse_recent_n_days(self) -> None:
         from datetime import timedelta
+
         tr = _parse_time_range("近7天的销量", NOW)
         assert tr is not None
         assert tr.end == NOW
@@ -184,6 +186,7 @@ class TestTimeRangeParsing:
 # ──────────────────────────────────────────────
 # T02: 域路由
 # ──────────────────────────────────────────────
+
 
 class TestDomainRouting:
     """DomainRouter.route() 的域路由测试。"""
@@ -257,6 +260,7 @@ class TestDomainRouting:
 # ──────────────────────────────────────────────
 # T03: 澄清逻辑
 # ──────────────────────────────────────────────
+
 
 class TestClarificationLogic:
     """无域/低置信度/歧义指标/宽泛问题时返回澄清。"""

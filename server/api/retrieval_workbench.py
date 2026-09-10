@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/v1/admin/retrieval", tags=["retrieval-workbench"
 # 请求/响应 Schema
 # ──────────────────────────────────────────────
 
+
 class RetrievalInspectRequest(BaseModel):
     """检索链路诊断请求。"""
 
@@ -136,6 +137,7 @@ class RetrievalInspectResponse(BaseModel):
 # 路由处理器
 # ──────────────────────────────────────────────
 
+
 @router.post("/inspect", response_model=RetrievalInspectResponse)
 async def inspect_retrieval(
     body: RetrievalInspectRequest,
@@ -157,6 +159,7 @@ async def inspect_retrieval(
 
     # 1. 域路由
     from server.domain.router import DomainRouter
+
     router_inst = getattr(app_state, "domain_router", None) or DomainRouter()
     now = date.today()
     intent = router_inst.route(body.question, now)
@@ -187,6 +190,7 @@ async def inspect_retrieval(
     retriever = getattr(app_state, "two_level_retriever", None)
     if retriever is not None:
         from server.search.retrieval import SchemaContext
+
         schema_ctx: SchemaContext = await retriever.retrieve(
             body.question,
             intent,

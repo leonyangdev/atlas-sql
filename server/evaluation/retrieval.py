@@ -73,7 +73,7 @@ class QuestionRetrievalResult:
     domain_correct: bool | None = None
 
     predicted_tables: list[str] = field(default_factory=list)
-    table_recall_at_k: float | None = None   # 召回率
+    table_recall_at_k: float | None = None  # 召回率
     table_precision_at_k: float | None = None  # 精度
 
     predicted_columns: list[str] = field(default_factory=list)
@@ -193,7 +193,7 @@ class RetrievalEvaluator:
 
                 # 域正确性
                 if q.gold_domain:
-                    result.domain_correct = (intent.primary_domain == q.gold_domain)
+                    result.domain_correct = intent.primary_domain == q.gold_domain
 
                 # 两级召回
                 schema_ctx: SchemaContext = await retriever.retrieve(
@@ -225,7 +225,8 @@ class RetrievalEvaluator:
             except Exception as exc:
                 logger.error(
                     "Retrieval evaluation failed for question %s: %s",
-                    q.question_id, exc,
+                    q.question_id,
+                    exc,
                 )
 
             results.append(result)
@@ -253,7 +254,9 @@ def _aggregate_results(
     """从单题结果聚合为整体报告（macro 平均，跳过无答案题）。"""
     domain_scores = [r.domain_correct for r in results if r.domain_correct is not None]
     table_recalls = [r.table_recall_at_k for r in results if r.table_recall_at_k is not None]
-    table_precisions = [r.table_precision_at_k for r in results if r.table_precision_at_k is not None]
+    table_precisions = [
+        r.table_precision_at_k for r in results if r.table_precision_at_k is not None
+    ]
     col_recalls = [r.column_recall for r in results if r.column_recall is not None]
     value_accs = [r.value_link_accuracy for r in results if r.value_link_accuracy is not None]
     join_accs = [r.join_path_correct for r in results if r.join_path_correct is not None]
@@ -306,8 +309,10 @@ def compare_v1_v2(
             v1_report.summary(),
             "",
             "## 增量对比",
-            f"  Domain Accuracy:  {v1_report.domain_accuracy:.1%} → {v2_report.domain_accuracy:.1%}",
-            f"  Table Recall@K:   {v1_report.table_recall_at_k:.1%} → {v2_report.table_recall_at_k:.1%}",
+            f"  Domain Accuracy:  {v1_report.domain_accuracy:.1%} → "
+            f"{v2_report.domain_accuracy:.1%}",
+            f"  Table Recall@K:   {v1_report.table_recall_at_k:.1%} → "
+            f"{v2_report.table_recall_at_k:.1%}",
             f"  Column Recall:    {v1_report.column_recall:.1%} → {v2_report.column_recall:.1%}",
         ]
 

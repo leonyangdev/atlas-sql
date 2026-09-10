@@ -20,49 +20,58 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
-from server.linking.schema import SchemaLinker, SchemaLinkResult, LinkType
-from server.linking.value import ValueLinker, TypedValue
+from server.domain.intent import (
+    DimensionMention,
+    FilterCondition,
+    IntentType,
+    MetricMention,
+    QueryIntent,
+)
 from server.linking.join_graph import (
     JoinGraph,
-    TableRelationship,
     RelationshipCardinality,
     RelationshipPurpose,
     _FakeRelationship,
-    build_graph_from_foreign_keys,
 )
+from server.linking.schema import LinkType, SchemaLinker
+from server.linking.value import ValueLinker
 from server.search.repository import Candidate, CandidateSource, InMemorySearchRepository
 from server.search.retrieval import SchemaContext
-from server.domain.intent import (
-    QueryIntent,
-    IntentType,
-    MetricMention,
-    DimensionMention,
-    FilterCondition,
-)
-
 
 # ──────────────────────────────────────────────
 # 辅助工厂函数
 # ──────────────────────────────────────────────
 
-def make_table_c(doc_id: str, table_name: str, business_name: str = "", domain: str = "sales") -> Candidate:
+
+def make_table_c(
+    doc_id: str, table_name: str, business_name: str = "", domain: str = "sales"
+) -> Candidate:
     return Candidate(
-        doc_id=doc_id, object_type="table", score=0.8,
-        source=CandidateSource.RRF, domain=domain, datasource_id=1,
+        doc_id=doc_id,
+        object_type="table",
+        score=0.8,
+        source=CandidateSource.RRF,
+        domain=domain,
+        datasource_id=1,
         payload={"table_name": table_name, "business_name": business_name},
     )
 
 
 def make_col_c(
-    doc_id: str, table_name: str, column_name: str,
-    business_name: str = "", sample_values_json: str = "",
+    doc_id: str,
+    table_name: str,
+    column_name: str,
+    business_name: str = "",
+    sample_values_json: str = "",
     data_type: str = "varchar",
 ) -> Candidate:
     return Candidate(
-        doc_id=doc_id, object_type="column", score=0.7,
-        source=CandidateSource.RRF, domain="sales", datasource_id=1,
+        doc_id=doc_id,
+        object_type="column",
+        score=0.7,
+        source=CandidateSource.RRF,
+        domain="sales",
+        datasource_id=1,
         payload={
             "table_name": table_name,
             "column_name": column_name,
@@ -91,11 +100,13 @@ def make_fake_rel(
     to_col: str,
     cardinality: RelationshipCardinality = RelationshipCardinality.MANY_TO_ONE,
     purpose: RelationshipPurpose = RelationshipPurpose.JOIN,
-) -> "_FakeRelationship":
+) -> _FakeRelationship:
     return _FakeRelationship(
         id=id,
-        from_table=from_table, to_table=to_table,
-        from_column=from_col, to_column=to_col,
+        from_table=from_table,
+        to_table=to_table,
+        from_column=from_col,
+        to_column=to_col,
         cardinality=cardinality,
         purpose=purpose,
     )
@@ -104,6 +115,7 @@ def make_fake_rel(
 # ──────────────────────────────────────────────
 # V2-S04-T01: Schema Linking
 # ──────────────────────────────────────────────
+
 
 class TestSchemaLinker:
     def test_links_known_metric(self) -> None:
@@ -155,7 +167,11 @@ class TestSchemaLinker:
             filters=[FilterCondition(concept="区域", value="华东")],
         )
         ctx = make_schema_context(
-            columns=[make_col_c("column:1:pub:dim_region:region_name", "dim_region", "region_name", "区域名称")]
+            columns=[
+                make_col_c(
+                    "column:1:pub:dim_region:region_name", "dim_region", "region_name", "区域名称"
+                )
+            ]
         )
         result = linker.link("华东区域销售额", intent, ctx)
         col_links = [lnk for lnk in result.links if lnk.link_type == LinkType.COLUMN]
@@ -175,8 +191,6 @@ class TestSchemaLinker:
             ]
         )
         result = linker.link("按区域看销售额", intent, ctx)
-        # 应该有冲突标记
-        conflict_links = [lnk for lnk in result.links if lnk.requires_clarification]
         # 如果触发了澄清，则应该有原因
         if result.requires_clarification:
             assert result.clarification_prompt
@@ -197,6 +211,7 @@ class TestSchemaLinker:
 # V2-S04-T02/T03: Value Linking + 消歧场景
 # ──────────────────────────────────────────────
 
+
 class TestValueLinker:
     async def test_apple_phone_maps_two_filters(self) -> None:
         """'苹果手机' 应通过别名字典映射为 Apple + Smartphone 两个过滤条件（V2-S04 验收）。"""
@@ -214,8 +229,6 @@ class TestValueLinker:
         repo = InMemorySearchRepository()
         result = await linker.link_values(intent, ctx, repo, datasource_id=1)
 
-        # 应该有至少两个类型化值（brand + category）
-        labels = {tv.column_label for tv in result.typed_values}
         assert len(result.typed_values) >= 1, "苹果手机应至少映射到一个字段"
         # 证据来自别名字典
         evidences = {tv.match_evidence for tv in result.typed_values}
@@ -231,8 +244,10 @@ class TestValueLinker:
         ctx = make_schema_context(
             columns=[
                 make_col_c(
-                    "col:brand", "dim_product", "brand_name",
-                    sample_values_json=json.dumps(["Apple", "Huawei", "Xiaomi"])
+                    "col:brand",
+                    "dim_product",
+                    "brand_name",
+                    sample_values_json=json.dumps(["Apple", "Huawei", "Xiaomi"]),
                 )
             ]
         )
@@ -251,8 +266,12 @@ class TestValueLinker:
         )
         ctx = make_schema_context(
             columns=[
-                make_col_c("col:sku", "dim_product", "sku_code",
-                           sample_values_json=json.dumps(["SKU001", "SKU002"]))
+                make_col_c(
+                    "col:sku",
+                    "dim_product",
+                    "sku_code",
+                    sample_values_json=json.dumps(["SKU001", "SKU002"]),
+                )
             ]
         )
         repo = InMemorySearchRepository()
@@ -291,10 +310,18 @@ class TestValueLinker:
         )
         ctx = make_schema_context(
             columns=[
-                make_col_c("col:city1", "dim_city", "city_name",
-                           sample_values_json=json.dumps(["Springfield", "Shanghai"])),
-                make_col_c("col:city2", "dim_address", "city",
-                           sample_values_json=json.dumps(["Springfield", "Beijing"])),
+                make_col_c(
+                    "col:city1",
+                    "dim_city",
+                    "city_name",
+                    sample_values_json=json.dumps(["Springfield", "Shanghai"]),
+                ),
+                make_col_c(
+                    "col:city2",
+                    "dim_address",
+                    "city",
+                    sample_values_json=json.dumps(["Springfield", "Beijing"]),
+                ),
             ]
         )
         repo = InMemorySearchRepository()
@@ -306,6 +333,7 @@ class TestValueLinker:
 # ──────────────────────────────────────────────
 # V2-S05-T01: Join Graph 构建
 # ──────────────────────────────────────────────
+
 
 class TestJoinGraphConstruction:
     def _build_sales_graph(self) -> JoinGraph:
@@ -340,6 +368,7 @@ class TestJoinGraphConstruction:
 # ──────────────────────────────────────────────
 # V2-S05-T02: 路径搜索与桥接表补齐
 # ──────────────────────────────────────────────
+
 
 class TestJoinGraphPathSearch:
     def _build_sales_graph(self) -> JoinGraph:
@@ -384,7 +413,6 @@ class TestJoinGraphPathSearch:
 
     def test_no_path_reported(self) -> None:
         """没有路径的表对应出现在 missing_paths 中。"""
-        graph = self._build_sales_graph()
         # 添加一个孤立表
         lonely_graph = JoinGraph()
         lonely_graph._nodes.add("fact_order_item")
@@ -396,6 +424,7 @@ class TestJoinGraphPathSearch:
 # ──────────────────────────────────────────────
 # V2-S05-T03: 多对多/多事实扇出检查
 # ──────────────────────────────────────────────
+
 
 class TestJoinGraphFanOut:
     def test_multi_fact_join_triggers_warning(self) -> None:
@@ -413,8 +442,11 @@ class TestJoinGraphFanOut:
         """多对多关系应在 check_fan_out 中报告。"""
         relations = [
             make_fake_rel(
-                1, "fact_order", "coupon",
-                "id", "order_id",
+                1,
+                "fact_order",
+                "coupon",
+                "id",
+                "order_id",
                 cardinality=RelationshipCardinality.MANY_TO_MANY,
             )
         ]
@@ -437,8 +469,11 @@ class TestJoinGraphFanOut:
         """agg_join 用途的关系应标注 requires_pre_aggregation。"""
         relations = [
             make_fake_rel(
-                1, "fact_order", "fact_invoice",
-                "order_id", "order_id",
+                1,
+                "fact_order",
+                "fact_invoice",
+                "order_id",
+                "order_id",
                 purpose=RelationshipPurpose.AGGREGATE_JOIN,
             )
         ]

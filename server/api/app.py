@@ -4,9 +4,9 @@
 """
 
 import subprocess
-import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -135,7 +135,6 @@ def _start_celery_worker(settings: Settings) -> "subprocess.Popen[bytes] | None"
     """
     import logging
     import os
-    from pathlib import Path
 
     logger = logging.getLogger(__name__)
 
@@ -152,12 +151,14 @@ def _start_celery_worker(settings: Settings) -> "subprocess.Popen[bytes] | None"
         proc = subprocess.Popen(
             [
                 str(venv_python),
-                "-m", "celery",
-                "-A", "server.tasks.celery_app:celery_app",
+                "-m",
+                "celery",
+                "-A",
+                "server.tasks.celery_app:celery_app",
                 "worker",
                 "--loglevel=info",
                 "--concurrency=2",
-                "--pool=solo",       # Windows 不支持 fork，solo 模式最稳定
+                "--pool=solo",  # Windows 不支持 fork，solo 模式最稳定
                 "--without-heartbeat",
             ],
             env=os.environ.copy(),
@@ -169,7 +170,7 @@ def _start_celery_worker(settings: Settings) -> "subprocess.Popen[bytes] | None"
         return None
 
 
-def _find_venv_python() -> "Path | None":
+def _find_venv_python() -> Path | None:
     """找到当前项目 venv 的 Python 可执行文件路径。
 
     优先顺序：
@@ -177,7 +178,6 @@ def _find_venv_python() -> "Path | None":
     2. 当前文件向上查找 .venv 目录
     """
     import os
-    from pathlib import Path
 
     # 方式 1：VIRTUAL_ENV 环境变量
     venv_dir = os.environ.get("VIRTUAL_ENV")

@@ -144,9 +144,7 @@ async def apply_migrations(
                 # 从调用方传入的 reader_password 创建角色；未传入时使用占位符（不可登录）
                 if reader_password is not None:
                     safe_password = reader_password.replace("'", "''")
-                    await connection.execute(
-                        f"CREATE ROLE {role} LOGIN PASSWORD '{safe_password}'"
-                    )
+                    await connection.execute(f"CREATE ROLE {role} LOGIN PASSWORD '{safe_password}'")
                     await connection.execute(
                         f"ALTER ROLE {role} SET default_transaction_read_only = on"
                     )

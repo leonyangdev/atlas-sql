@@ -41,7 +41,7 @@ class CandidateSource(enum.StrEnum):
 
     BM25 = "bm25"
     DENSE = "dense"
-    RRF = "rrf"       # RRF 融合后
+    RRF = "rrf"  # RRF 融合后
     RERANKED = "reranked"  # Reranker 重排后
 
 
@@ -49,8 +49,8 @@ class RetrievalStatus(enum.StrEnum):
     """单次检索调用的状态，用于 Trace 标记。"""
 
     OK = "ok"
-    DEGRADED = "degraded"    # 某一路超时降级，仅返回单路结果
-    FAILED = "failed"        # 双路均失败
+    DEGRADED = "degraded"  # 某一路超时降级，仅返回单路结果
+    FAILED = "failed"  # 双路均失败
 
 
 @dataclass(frozen=True)
@@ -207,7 +207,8 @@ class InMemorySearchRepository:
     ) -> SearchResult:
         """过滤并返回预置的 Schema 候选。"""
         results = [
-            c for c in self._schema_candidates
+            c
+            for c in self._schema_candidates
             if c.datasource_id == datasource_id
             and (not allowed_domains or c.domain in allowed_domains)
             and (object_types is None or c.object_type in object_types)
@@ -233,7 +234,8 @@ class InMemorySearchRepository:
     ) -> SearchResult:
         """返回预置的值候选（简单字符串包含过滤）。"""
         results = [
-            c for c in self._value_candidates
+            c
+            for c in self._value_candidates
             if datasource_id == c.datasource_id
             and value_text.lower() in str(c.payload.get("value", "")).lower()
             and (column_ids is None or c.doc_id in column_ids)
@@ -250,7 +252,8 @@ class InMemorySearchRepository:
     ) -> SearchResult:
         """返回预置的已验证查询候选。"""
         results = [
-            c for c in self._verified_query_candidates
+            c
+            for c in self._verified_query_candidates
             if not allowed_domains or c.domain in allowed_domains
         ]
         results.sort(key=lambda c: c.score, reverse=True)

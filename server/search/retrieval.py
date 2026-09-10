@@ -32,8 +32,8 @@ import logging
 from dataclasses import dataclass, field
 
 from server.domain.intent import QueryIntent
-from server.search.reranker import BaseReranker, FakeReranker
 from server.search.repository import Candidate, SearchRepository
+from server.search.reranker import BaseReranker
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +63,7 @@ class SchemaContext:
 
     def table_names(self) -> list[str]:
         """返回召回的表名列表（从 payload 中提取）。"""
-        return [
-            c.payload.get("table_name", c.doc_id)
-            for c in self.tables
-        ]
+        return [c.payload.get("table_name", c.doc_id) for c in self.tables]
 
     def to_prompt_schema(self) -> list[dict[str, object]]:
         """将召回结果转换为 Prompt 可用的 Schema 描述列表。
@@ -84,23 +81,25 @@ class SchemaContext:
         for table in self.tables:
             table_name = table.payload.get("table_name", table.doc_id)
             cols = table_columns.get(table_name, [])
-            result.append({
-                "table_name": table_name,
-                "business_name": table.payload.get("business_name", ""),
-                "description": table.payload.get("description", ""),
-                "domain": table.domain,
-                "columns": [
-                    {
-                        "column_name": c.payload.get("column_name", ""),
-                        "data_type": c.payload.get("data_type", ""),
-                        "business_name": c.payload.get("business_name", ""),
-                        "description": c.payload.get("description", ""),
-                        "is_primary_key": c.payload.get("is_primary_key", False),
-                        "foreign_key_ref": c.payload.get("foreign_key_ref"),
-                    }
-                    for c in cols
-                ],
-            })
+            result.append(
+                {
+                    "table_name": table_name,
+                    "business_name": table.payload.get("business_name", ""),
+                    "description": table.payload.get("description", ""),
+                    "domain": table.domain,
+                    "columns": [
+                        {
+                            "column_name": c.payload.get("column_name", ""),
+                            "data_type": c.payload.get("data_type", ""),
+                            "business_name": c.payload.get("business_name", ""),
+                            "description": c.payload.get("description", ""),
+                            "is_primary_key": c.payload.get("is_primary_key", False),
+                            "foreign_key_ref": c.payload.get("foreign_key_ref"),
+                        }
+                        for c in cols
+                    ],
+                }
+            )
         return result
 
 
@@ -165,7 +164,7 @@ class TwoLevelRetriever:
                 question, table_candidates, top_n=self._top_table_n
             )
         else:
-            table_candidates = table_candidates[:self._top_table_n]
+            table_candidates = table_candidates[: self._top_table_n]
 
         if not table_candidates:
             logger.warning("No table candidates found for question: %s", question[:50])
@@ -173,7 +172,9 @@ class TwoLevelRetriever:
 
         # ── Level 2: Column Retrieval ─────────────────────────────────────
         # 在候选表的范围内检索列（通过 doc_id 前缀过滤）
-        table_names = [c.payload.get("table_name", "") for c in table_candidates if c.payload.get("table_name")]
+        table_names = [
+            c.payload.get("table_name", "") for c in table_candidates if c.payload.get("table_name")
+        ]
         col_result = await self._repo.search_schema(
             question,
             datasource_id=datasource_id,
@@ -185,16 +186,13 @@ class TwoLevelRetriever:
 
         # 只保留属于候选表的列（按 table_name 过滤）
         col_candidates = [
-            c for c in col_result.candidates
-            if c.payload.get("table_name") in table_names
+            c for c in col_result.candidates if c.payload.get("table_name") in table_names
         ]
 
         if self._reranker and col_candidates:
-            col_candidates = self._reranker.rerank(
-                question, col_candidates, top_n=self._top_col_n
-            )
+            col_candidates = self._reranker.rerank(question, col_candidates, top_n=self._top_col_n)
         else:
-            col_candidates = col_candidates[:self._top_col_n]
+            col_candidates = col_candidates[: self._top_col_n]
 
         # ── Token 预算裁剪 ────────────────────────────────────────────────
         estimated = _estimate_tokens(table_candidates, col_candidates)
@@ -208,7 +206,9 @@ class TwoLevelRetriever:
             estimated = _estimate_tokens(table_candidates, col_candidates)
             logger.info(
                 "Token budget trimmed: %d → %d tokens, %d columns remaining",
-                estimated, self._token_budget, len(col_candidates),
+                estimated,
+                self._token_budget,
+                len(col_candidates),
             )
 
         return SchemaContext(

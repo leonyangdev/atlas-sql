@@ -53,19 +53,13 @@ async def _ensure_reader_role(owner_url: str, role: str, password: str) -> None:
     dsn = owner_url.replace("postgresql+asyncpg://", "postgresql://")
     conn: asyncpg.Connection = await asyncpg.connect(dsn=dsn, timeout=10)
     try:
-        exists = await conn.fetchval(
-            "SELECT 1 FROM pg_roles WHERE rolname = $1", role
-        )
+        exists = await conn.fetchval("SELECT 1 FROM pg_roles WHERE rolname = $1", role)
         if not exists:
             # 用参数化方式传密码，避免拼接 SQL
             safe_role = role.replace('"', '""')
             safe_password = password.replace("'", "''")
-            await conn.execute(
-                f'CREATE ROLE "{safe_role}" LOGIN PASSWORD \'{safe_password}\''
-            )
-            await conn.execute(
-                f'ALTER ROLE "{safe_role}" SET default_transaction_read_only = on'
-            )
+            await conn.execute(f"CREATE ROLE \"{safe_role}\" LOGIN PASSWORD '{safe_password}'")
+            await conn.execute(f'ALTER ROLE "{safe_role}" SET default_transaction_read_only = on')
             print(f"created role: {role}")
         else:
             print(f"role already exists, skipped: {role}")

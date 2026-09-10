@@ -157,7 +157,7 @@ class ValueLinker:
         clarification = None
         if unlinked:
             clarification = (
-                f"无法确认以下实体值对应的数据：{"、".join(unlinked)}，"
+                f"无法确认以下实体值对应的数据：{'、'.join(unlinked)}，"
                 "请您提供更精确的名称或选择选项。"
             )
 
@@ -203,9 +203,7 @@ class ValueLinker:
         logger.debug("Value Linking: no match found for '%s'", value_text)
         return []
 
-    def _try_alias_dict(
-        self, value_text: str, schema_context: SchemaContext
-    ) -> list[TypedValue]:
+    def _try_alias_dict(self, value_text: str, schema_context: SchemaContext) -> list[TypedValue]:
         """从别名字典中查找映射，并与候选列交叉验证。
 
         对于"苹果手机"这类多词实体，一次可能产生多个 TypedValue：
@@ -297,6 +295,7 @@ class ValueLinker:
     ) -> list[TypedValue]:
         """将 search_values 的候选结果转换为 TypedValue。"""
         from server.search.repository import Candidate as SearchCandidate
+
         results: list[TypedValue] = []
         for c in candidates:
             if not isinstance(c, SearchCandidate):

@@ -25,15 +25,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 
 from server.search.fusion import RRFFusion
 from server.search.milvus import MilvusRetriever
 from server.search.opensearch import OpenSearchRetriever
 from server.search.repository import (
-    Candidate,
     RetrievalStatus,
-    SearchRepository,
     SearchResult,
 )
 

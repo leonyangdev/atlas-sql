@@ -20,6 +20,11 @@ from __future__ import annotations
 
 import pytest
 
+from server.llm.embedding import FakeEmbeddingProvider
+from server.search.fusion import RRFFusion
+from server.search.hybrid import HybridSearchRepository, _merge_and_fuse
+from server.search.milvus import FakeMilvusCollection, MilvusRetriever
+from server.search.opensearch import FakeOpenSearchClient, OpenSearchRetriever
 from server.search.repository import (
     Candidate,
     CandidateSource,
@@ -27,18 +32,13 @@ from server.search.repository import (
     RetrievalStatus,
     SearchResult,
 )
-from server.search.fusion import RRFFusion
 from server.search.reranker import FakeReranker
-from server.search.retrieval import TwoLevelRetriever, _estimate_tokens, _budget_trim
-from server.search.opensearch import OpenSearchRetriever, FakeOpenSearchClient
-from server.search.milvus import MilvusRetriever, FakeMilvusCollection
-from server.search.hybrid import HybridSearchRepository, _merge_and_fuse
-from server.llm.embedding import FakeEmbeddingProvider
-
+from server.search.retrieval import TwoLevelRetriever, _budget_trim, _estimate_tokens
 
 # ──────────────────────────────────────────────
 # 辅助工厂函数
 # ──────────────────────────────────────────────
+
 
 def make_table_candidate(
     doc_id: str,
@@ -97,16 +97,19 @@ def make_column_candidate(
 # T01: SearchRepository 契约与 InMemorySearchRepository
 # ──────────────────────────────────────────────
 
+
 class TestInMemorySearchRepository:
     """验证 InMemorySearchRepository 满足授权过滤约束。"""
 
     async def test_datasource_filter(self) -> None:
         """不同数据源的候选不会相互污染。"""
         repo = InMemorySearchRepository()
-        repo.register_schema_candidates([
-            make_table_candidate("table:1:pub:fact_order", 1.0, datasource_id=1),
-            make_table_candidate("table:2:pub:fact_order", 0.9, datasource_id=2),
-        ])
+        repo.register_schema_candidates(
+            [
+                make_table_candidate("table:1:pub:fact_order", 1.0, datasource_id=1),
+                make_table_candidate("table:2:pub:fact_order", 0.9, datasource_id=2),
+            ]
+        )
 
         result = await repo.search_schema(
             "订单量",
@@ -119,10 +122,16 @@ class TestInMemorySearchRepository:
     async def test_domain_filter(self) -> None:
         """不同业务域的候选不会跨域泄露。"""
         repo = InMemorySearchRepository()
-        repo.register_schema_candidates([
-            make_table_candidate("table:1:pub:fact_order", 1.0, domain="sales", datasource_id=1),
-            make_table_candidate("table:1:pub:dim_warehouse", 0.9, domain="inventory", datasource_id=1),
-        ])
+        repo.register_schema_candidates(
+            [
+                make_table_candidate(
+                    "table:1:pub:fact_order", 1.0, domain="sales", datasource_id=1
+                ),
+                make_table_candidate(
+                    "table:1:pub:dim_warehouse", 0.9, domain="inventory", datasource_id=1
+                ),
+            ]
+        )
 
         result = await repo.search_schema(
             "订单",
@@ -140,11 +149,13 @@ class TestInMemorySearchRepository:
 
     async def test_sorted_by_score(self) -> None:
         repo = InMemorySearchRepository()
-        repo.register_schema_candidates([
-            make_table_candidate("table:1:pub:a", 0.3, datasource_id=1),
-            make_table_candidate("table:1:pub:b", 0.9, datasource_id=1),
-            make_table_candidate("table:1:pub:c", 0.6, datasource_id=1),
-        ])
+        repo.register_schema_candidates(
+            [
+                make_table_candidate("table:1:pub:a", 0.3, datasource_id=1),
+                make_table_candidate("table:1:pub:b", 0.9, datasource_id=1),
+                make_table_candidate("table:1:pub:c", 0.6, datasource_id=1),
+            ]
+        )
         result = await repo.search_schema("test", datasource_id=1, allowed_domains=[])
         scores = [c.score for c in result.candidates]
         assert scores == sorted(scores, reverse=True)
@@ -154,33 +165,34 @@ class TestInMemorySearchRepository:
 # T02: OpenSearch + Milvus 检索（Fake 客户端）
 # ──────────────────────────────────────────────
 
+
 class TestOpenSearchRetriever:
     """使用 FakeOpenSearchClient 验证检索逻辑（不发起真实 HTTP 请求）。"""
 
     async def test_returns_candidates_from_hits(self) -> None:
         fake_client = FakeOpenSearchClient()
-        fake_client.enqueue_response({
-            "hits": {
-                "hits": [
-                    {
-                        "_id": "table:1:pub:fact_order",
-                        "_score": 8.5,
-                        "_source": {
-                            "doc_id": "table:1:pub:fact_order",
-                            "object_type": "table",
-                            "domain": "sales",
-                            "datasource_id": 1,
-                            "metadata_version": "v1",
-                            "table_name": "fact_order",
-                        },
-                    }
-                ]
+        fake_client.enqueue_response(
+            {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "table:1:pub:fact_order",
+                            "_score": 8.5,
+                            "_source": {
+                                "doc_id": "table:1:pub:fact_order",
+                                "object_type": "table",
+                                "domain": "sales",
+                                "datasource_id": 1,
+                                "metadata_version": "v1",
+                                "table_name": "fact_order",
+                            },
+                        }
+                    ]
+                }
             }
-        })
-        retriever = OpenSearchRetriever(fake_client, env="dev")
-        result = await retriever.search_schema(
-            "订单量", datasource_id=1, allowed_domains=["sales"]
         )
+        retriever = OpenSearchRetriever(fake_client, env="dev")
+        result = await retriever.search_schema("订单量", datasource_id=1, allowed_domains=["sales"])
         assert result.status == RetrievalStatus.OK
         assert len(result.candidates) == 1
         assert result.candidates[0].doc_id == "table:1:pub:fact_order"
@@ -188,16 +200,13 @@ class TestOpenSearchRetriever:
         assert result.candidates[0].source == CandidateSource.BM25
 
     async def test_timeout_returns_degraded(self) -> None:
-        import asyncio
 
         class TimeoutClient:
             async def search(self, *, index: str, body: object) -> object:
-                raise asyncio.TimeoutError()
+                raise TimeoutError()
 
         retriever = OpenSearchRetriever(TimeoutClient(), env="dev", timeout_seconds=0.001)
-        result = await retriever.search_schema(
-            "test", datasource_id=1, allowed_domains=[]
-        )
+        result = await retriever.search_schema("test", datasource_id=1, allowed_domains=[])
         assert result.status == RetrievalStatus.DEGRADED
         assert result.degraded_source == "bm25"
         assert result.candidates == []
@@ -209,17 +218,14 @@ class TestMilvusRetriever:
     async def test_returns_dense_candidates(self) -> None:
         fake_col = FakeMilvusCollection()
         dense_cand = make_table_candidate(
-            "table:1:pub:fact_order", 0.95,
-            source=CandidateSource.DENSE, datasource_id=1
+            "table:1:pub:fact_order", 0.95, source=CandidateSource.DENSE, datasource_id=1
         )
         fake_col.enqueue_response([dense_cand])
 
         fake_embedding = FakeEmbeddingProvider(dimension=8)
         retriever = MilvusRetriever(fake_col, fake_embedding, env="dev")
 
-        result = await retriever.search_schema(
-            "订单量", datasource_id=1, allowed_domains=["sales"]
-        )
+        result = await retriever.search_schema("订单量", datasource_id=1, allowed_domains=["sales"])
         assert result.status == RetrievalStatus.OK
         assert len(result.candidates) == 1
         assert result.candidates[0].source == CandidateSource.DENSE
@@ -228,6 +234,7 @@ class TestMilvusRetriever:
 # ──────────────────────────────────────────────
 # T03: 降级处理
 # ──────────────────────────────────────────────
+
 
 class TestDegradation:
     """验证单路失败时的降级行为。"""
@@ -274,6 +281,7 @@ class TestDegradation:
 # ──────────────────────────────────────────────
 # T01: RRF 融合
 # ──────────────────────────────────────────────
+
 
 class TestRRFFusion:
     """RRF 公式、去重、每路排名保存、消融实验模式。"""
@@ -328,7 +336,9 @@ class TestRRFFusion:
         """融合结果不超过 top_k。"""
         bm25 = [make_table_candidate(f"table:1:pub:t{i}", float(10 - i)) for i in range(10)]
         dense = [
-            make_table_candidate(f"table:1:pub:t{i}", float(1 - 0.05 * i), source=CandidateSource.DENSE)
+            make_table_candidate(
+                f"table:1:pub:t{i}", float(1 - 0.05 * i), source=CandidateSource.DENSE
+            )
             for i in range(10)
         ]
         fusion = RRFFusion(k=60)
@@ -364,6 +374,7 @@ class TestRRFFusion:
 # T02: Reranker + 必需字段保护
 # ──────────────────────────────────────────────
 
+
 class TestFakeReranker:
     def test_reranks_by_score(self) -> None:
         reranker = FakeReranker()
@@ -395,8 +406,11 @@ class TestFakeReranker:
         reranker = FakeReranker(score_override={"column:1:pub:t:order_id": 0.001})
         candidates = [
             make_column_candidate(
-                "column:1:pub:t:order_id", 0.001, "t", "order_id",
-                foreign_key_ref="public.fact_order.id"
+                "column:1:pub:t:order_id",
+                0.001,
+                "t",
+                "order_id",
+                foreign_key_ref="public.fact_order.id",
             ),
             *[
                 make_column_candidate(f"column:1:pub:t:x{i}", 0.8 - 0.01 * i, "t", f"x{i}")
@@ -412,12 +426,17 @@ class TestFakeReranker:
 # T03: Token 预算裁剪
 # ──────────────────────────────────────────────
 
+
 class TestTokenBudget:
     def test_estimate_tokens(self) -> None:
         from server.search.retrieval import _TOKENS_PER_COLUMN, _TOKENS_PER_TABLE_HEADER
+
         tables = [make_table_candidate(f"table:1:pub:t{i}", 1.0) for i in range(3)]
-        columns = [make_column_candidate(f"col:t{i}:{j}", 0.5, f"t{i}", f"c{j}")
-                   for i in range(3) for j in range(5)]
+        columns = [
+            make_column_candidate(f"col:t{i}:{j}", 0.5, f"t{i}", f"c{j}")
+            for i in range(3)
+            for j in range(5)
+        ]
         est = _estimate_tokens(tables, columns)
         assert est == 3 * _TOKENS_PER_TABLE_HEADER + 15 * _TOKENS_PER_COLUMN
 
@@ -437,6 +456,7 @@ class TestTokenBudget:
     def test_budget_trim_removes_low_score_ordinary(self) -> None:
         """在预算内，低分普通列应被裁掉。"""
         from server.search.retrieval import _TOKENS_PER_COLUMN
+
         high_score = make_column_candidate("col:high", 0.9, "t", "c_high")
         low_score = make_column_candidate("col:low", 0.1, "t", "c_low")
         # 只允许 1 个普通列的预算
@@ -450,32 +470,38 @@ class TestTokenBudget:
 # T02: TwoLevelRetriever 集成测试
 # ──────────────────────────────────────────────
 
+
 class TestTwoLevelRetriever:
     async def test_retrieves_tables_then_columns(self) -> None:
         """两级召回：先召回表，再在候选表内召回列。"""
         repo = InMemorySearchRepository()
 
         # 预置表候选
-        repo.register_schema_candidates([
-            make_table_candidate(
-                "table:1:pub:fact_order", 0.9,
-                table_name="fact_order", datasource_id=1
-            ),
-            make_column_candidate(
-                "column:1:pub:fact_order:id", 0.85,
-                "fact_order", "id", datasource_id=1
-            ),
-            make_column_candidate(
-                "column:1:pub:fact_order:net_amount", 0.8,
-                "fact_order", "net_amount", datasource_id=1
-            ),
-        ])
+        repo.register_schema_candidates(
+            [
+                make_table_candidate(
+                    "table:1:pub:fact_order", 0.9, table_name="fact_order", datasource_id=1
+                ),
+                make_column_candidate(
+                    "column:1:pub:fact_order:id", 0.85, "fact_order", "id", datasource_id=1
+                ),
+                make_column_candidate(
+                    "column:1:pub:fact_order:net_amount",
+                    0.8,
+                    "fact_order",
+                    "net_amount",
+                    datasource_id=1,
+                ),
+            ]
+        )
 
         reranker = FakeReranker()
         retriever = TwoLevelRetriever(repo, reranker=reranker, top_table_n=5, top_col_n=20)
 
-        from server.domain.intent import QueryIntent, IntentType
         from datetime import date
+
+        from server.domain.intent import IntentType, QueryIntent
+
         intent = QueryIntent(
             intent_type=IntentType.ANALYTICAL,
             primary_domain="sales",
@@ -493,8 +519,10 @@ class TestTwoLevelRetriever:
         repo = InMemorySearchRepository()  # 空仓储
         retriever = TwoLevelRetriever(repo)
 
-        from server.domain.intent import QueryIntent, IntentType
         from datetime import date
+
+        from server.domain.intent import IntentType, QueryIntent
+
         intent = QueryIntent(
             intent_type=IntentType.ANALYTICAL,
             domain_candidates={},
@@ -509,46 +537,48 @@ class TestTwoLevelRetriever:
 # 补充：OpenSearch 值搜索 + 已验证查询搜索
 # ──────────────────────────────────────────────
 
+
 class TestOpenSearchRetrieverExtra:
     """覆盖 opensearch.py 中 search_values 和 search_verified_queries 的路径。"""
 
     async def test_search_values_returns_candidates(self) -> None:
-        from server.search.opensearch import OpenSearchRetriever, FakeOpenSearchClient
+        from server.search.opensearch import FakeOpenSearchClient, OpenSearchRetriever
+
         fake_client = FakeOpenSearchClient()
-        fake_client.enqueue_response({
-            "hits": {
-                "hits": [
-                    {
-                        "_id": "column:1:pub:dim_product:brand_name",
-                        "_score": 5.0,
-                        "_source": {
-                            "doc_id": "column:1:pub:dim_product:brand_name",
-                            "object_type": "column",
-                            "domain": "sales",
-                            "datasource_id": 1,
-                            "metadata_version": "v1",
-                            "table_name": "dim_product",
-                            "column_name": "brand_name",
-                        },
-                    }
-                ]
+        fake_client.enqueue_response(
+            {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "column:1:pub:dim_product:brand_name",
+                            "_score": 5.0,
+                            "_source": {
+                                "doc_id": "column:1:pub:dim_product:brand_name",
+                                "object_type": "column",
+                                "domain": "sales",
+                                "datasource_id": 1,
+                                "metadata_version": "v1",
+                                "table_name": "dim_product",
+                                "column_name": "brand_name",
+                            },
+                        }
+                    ]
+                }
             }
-        })
-        retriever = OpenSearchRetriever(fake_client, env="dev")
-        result = await retriever.search_values(
-            "Apple", datasource_id=1, allowed_domains=["sales"]
         )
+        retriever = OpenSearchRetriever(fake_client, env="dev")
+        result = await retriever.search_values("Apple", datasource_id=1, allowed_domains=["sales"])
         assert result.status == RetrievalStatus.OK
         assert len(result.candidates) == 1
         assert result.candidates[0].score == 5.0
 
     async def test_search_values_timeout_returns_degraded(self) -> None:
-        import asyncio
+
         from server.search.opensearch import OpenSearchRetriever
 
         class TimeoutClient:
             async def search(self, *, index: str, body: object) -> object:
-                raise asyncio.TimeoutError()
+                raise TimeoutError()
 
         retriever = OpenSearchRetriever(TimeoutClient(), env="dev", timeout_seconds=0.001)
         result = await retriever.search_values("Apple", datasource_id=1, allowed_domains=[])
@@ -566,29 +596,30 @@ class TestOpenSearchRetrieverExtra:
         assert result.status == RetrievalStatus.FAILED
 
     async def test_search_verified_queries_returns_candidates(self) -> None:
-        from server.search.opensearch import OpenSearchRetriever, FakeOpenSearchClient
+        from server.search.opensearch import FakeOpenSearchClient, OpenSearchRetriever
+
         fake_client = FakeOpenSearchClient()
-        fake_client.enqueue_response({
-            "hits": {
-                "hits": [
-                    {
-                        "_id": "verified_query:1",
-                        "_score": 7.2,
-                        "_source": {
-                            "doc_id": "verified_query:1",
-                            "object_type": "verified_query",
-                            "domain": "sales",
-                            "datasource_id": 1,
-                            "metadata_version": "v1",
-                        },
-                    }
-                ]
+        fake_client.enqueue_response(
+            {
+                "hits": {
+                    "hits": [
+                        {
+                            "_id": "verified_query:1",
+                            "_score": 7.2,
+                            "_source": {
+                                "doc_id": "verified_query:1",
+                                "object_type": "verified_query",
+                                "domain": "sales",
+                                "datasource_id": 1,
+                                "metadata_version": "v1",
+                            },
+                        }
+                    ]
+                }
             }
-        })
-        retriever = OpenSearchRetriever(fake_client, env="dev")
-        result = await retriever.search_verified_queries(
-            "销售额", allowed_domains=["sales"]
         )
+        retriever = OpenSearchRetriever(fake_client, env="dev")
+        result = await retriever.search_verified_queries("销售额", allowed_domains=["sales"])
         assert result.status == RetrievalStatus.OK
         assert len(result.candidates) == 1
 
@@ -609,12 +640,13 @@ class TestOpenSearchRetrieverExtra:
 # 补充：Milvus 已验证查询搜索 + 错误路径
 # ──────────────────────────────────────────────
 
+
 class TestMilvusRetrieverExtra:
     """覆盖 milvus.py 中 search_verified_queries 和各种失败路径。"""
 
     async def test_search_verified_queries_returns_candidates(self) -> None:
-        from server.search.milvus import MilvusRetriever, FakeMilvusCollection
         from server.llm.embedding import FakeEmbeddingProvider
+        from server.search.milvus import FakeMilvusCollection, MilvusRetriever
 
         fake_col = FakeMilvusCollection()
         dense_cand = make_column_candidate(
@@ -629,14 +661,12 @@ class TestMilvusRetrieverExtra:
 
     async def test_search_schema_embedding_failure_returns_failed(self) -> None:
         """Embedding 失败时返回 FAILED，不抛出异常。"""
-        from server.search.milvus import MilvusRetriever
         from server.llm.embedding import FakeEmbeddingProvider
+        from server.search.milvus import MilvusRetriever
 
         class BrokenEmbedding(FakeEmbeddingProvider):
             def embed_batch(self, texts: list[str]) -> list[object]:
                 raise RuntimeError("embed failed")
-
-        fake_col = make_column_candidate  # 任意占位，不会到达 search 阶段
 
         class EmptyCol:
             def search(self, **kw: object) -> list[list[object]]:
@@ -648,19 +678,21 @@ class TestMilvusRetrieverExtra:
         assert result.degraded_source == "dense"
 
     async def test_search_schema_timeout_returns_degraded(self) -> None:
-        import asyncio
-        from server.search.milvus import MilvusRetriever
         from server.llm.embedding import FakeEmbeddingProvider
+        from server.search.milvus import MilvusRetriever
 
         class SlowCol:
             def search(self, **kw: object) -> list[list[object]]:
                 import time
+
                 time.sleep(10)  # 会被 wait_for 超时
                 return [[]]
 
         retriever = MilvusRetriever(
-            SlowCol(), FakeEmbeddingProvider(dimension=8),
-            env="dev", timeout_seconds=0.001,
+            SlowCol(),
+            FakeEmbeddingProvider(dimension=8),
+            env="dev",
+            timeout_seconds=0.001,
         )
         result = await retriever.search_schema("test", datasource_id=1, allowed_domains=[])
         assert result.status == RetrievalStatus.DEGRADED
@@ -671,15 +703,16 @@ class TestMilvusRetrieverExtra:
 # 补充：HybridSearchRepository 的 values / verified_queries 路径
 # ──────────────────────────────────────────────
 
+
 class TestHybridSearchRepositoryExtra:
     """覆盖 hybrid.py 中 search_values 和 search_verified_queries 的路径。"""
 
-    def _make_hybrid(self) -> "HybridSearchRepository":
-        from server.search.opensearch import OpenSearchRetriever, FakeOpenSearchClient
-        from server.search.milvus import MilvusRetriever, FakeMilvusCollection
-        from server.search.hybrid import HybridSearchRepository
+    def _make_hybrid(self) -> HybridSearchRepository:
         from server.llm.embedding import FakeEmbeddingProvider
         from server.search.fusion import RRFFusion
+        from server.search.hybrid import HybridSearchRepository
+        from server.search.milvus import FakeMilvusCollection, MilvusRetriever
+        from server.search.opensearch import FakeOpenSearchClient, OpenSearchRetriever
 
         # 两路都返回空结果
         fake_os = FakeOpenSearchClient()
@@ -690,7 +723,7 @@ class TestHybridSearchRepositoryExtra:
         return HybridSearchRepository(os_ret, mv_ret, fusion=RRFFusion())
 
     async def test_search_values_runs_without_error(self) -> None:
-        from server.search.hybrid import HybridSearchRepository
+
         repo = self._make_hybrid()
         result = await repo.search_values("Apple", datasource_id=1, allowed_domains=["sales"])
         # 两路都返回空，融合后也应该是空（status 可以是 OK 或 DEGRADED）
@@ -703,8 +736,6 @@ class TestHybridSearchRepositoryExtra:
 
     async def test_search_schema_both_empty_returns_ok_empty(self) -> None:
         repo = self._make_hybrid()
-        result = await repo.search_schema(
-            "test", datasource_id=1, allowed_domains=["sales"]
-        )
+        result = await repo.search_schema("test", datasource_id=1, allowed_domains=["sales"])
         # 两路都空，融合结果也为空，但状态应该是 OK（两路都"成功"返回了空列表）
         assert result.candidates == []

@@ -63,10 +63,10 @@ async def main() -> None:
                 print(f"ℹ️  数据源已存在，跳过注册：{ds.slug}（id={ds.id}）")
 
             # 2. 触发元数据同步
-            from datetime import UTC, datetime
+
+            import uuid
 
             from server.datasource.models import MetadataSyncJob
-            import uuid
 
             job = MetadataSyncJob(
                 datasource_id=ds.id,
@@ -80,6 +80,7 @@ async def main() -> None:
 
             # 从环境变量解析实际连接串
             from server.datasource.credentials import CredentialError, resolve_credential
+
             try:
                 source_url = resolve_credential(ds.credential_ref)
             except CredentialError as exc:
@@ -91,9 +92,7 @@ async def main() -> None:
             await session.commit()
 
             if job.status == SyncStatus.SUCCEEDED:
-                print(
-                    f"✅ 同步完成：{job.tables_discovered} 张表，{job.columns_discovered} 列"
-                )
+                print(f"✅ 同步完成：{job.tables_discovered} 张表，{job.columns_discovered} 列")
             else:
                 print(f"❌ 同步失败：{job.error_summary}")
                 sys.exit(1)

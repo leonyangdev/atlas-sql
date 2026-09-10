@@ -13,30 +13,28 @@
 
 from __future__ import annotations
 
-from datetime import date
-
-import pytest
-
+from server.domain.router import DomainRouter
 from server.evaluation.retrieval import (
+    QuestionRetrievalResult,
     RetrievalEvaluator,
     RetrievalQuestion,
     RetrievalReport,
-    QuestionRetrievalResult,
     _aggregate_results,
     _extract_column_labels,
     compare_v1_v2,
 )
 from server.search.repository import Candidate, CandidateSource, InMemorySearchRepository
-from server.search.retrieval import SchemaContext, TwoLevelRetriever
 from server.search.reranker import FakeReranker
-from server.domain.router import DomainRouter
-
+from server.search.retrieval import SchemaContext, TwoLevelRetriever
 
 # ──────────────────────────────────────────────
 # 辅助工厂
 # ──────────────────────────────────────────────
 
-def make_table_c(table_name: str, domain: str = "sales", score: float = 0.9, datasource_id: int = 1) -> Candidate:
+
+def make_table_c(
+    table_name: str, domain: str = "sales", score: float = 0.9, datasource_id: int = 1
+) -> Candidate:
     return Candidate(
         doc_id=f"table:{datasource_id}:pub:{table_name}",
         object_type="table",
@@ -74,6 +72,7 @@ def make_schema_ctx(
 # RetrievalQuestion 数据类
 # ──────────────────────────────────────────────
 
+
 class TestRetrievalQuestion:
     def test_default_fields(self) -> None:
         q = RetrievalQuestion(question_id="q1", question="今年销售额")
@@ -103,6 +102,7 @@ class TestRetrievalQuestion:
 # ──────────────────────────────────────────────
 # RetrievalReport 方法
 # ──────────────────────────────────────────────
+
 
 class TestRetrievalReport:
     def _make_report(self, **kwargs) -> RetrievalReport:  # type: ignore[no-untyped-def]
@@ -189,6 +189,7 @@ class TestRetrievalReport:
 # _extract_column_labels
 # ──────────────────────────────────────────────
 
+
 class TestExtractColumnLabels:
     def test_extracts_table_dot_column(self) -> None:
         ctx = make_schema_ctx(columns=[("fact_order", "net_amount"), ("dim_region", "region_name")])
@@ -220,6 +221,7 @@ class TestExtractColumnLabels:
 # ──────────────────────────────────────────────
 # _aggregate_results
 # ──────────────────────────────────────────────
+
 
 class TestAggregateResults:
     def test_macro_average_domain_accuracy(self) -> None:
@@ -267,17 +269,20 @@ class TestAggregateResults:
 # RetrievalEvaluator.run()
 # ──────────────────────────────────────────────
 
+
 class TestRetrievalEvaluator:
     """使用 InMemorySearchRepository + FakeReranker，不依赖真实检索服务。"""
 
     def _make_repo_with_sales_tables(self) -> InMemorySearchRepository:
         repo = InMemorySearchRepository()
-        repo.register_schema_candidates([
-            make_table_c("fact_order", datasource_id=1),
-            make_table_c("dim_region", datasource_id=1),
-            make_col_c("fact_order", "net_amount"),
-            make_col_c("dim_region", "region_name"),
-        ])
+        repo.register_schema_candidates(
+            [
+                make_table_c("fact_order", datasource_id=1),
+                make_table_c("dim_region", datasource_id=1),
+                make_col_c("fact_order", "net_amount"),
+                make_col_c("dim_region", "region_name"),
+            ]
+        )
         return repo
 
     async def test_run_returns_report(self) -> None:
@@ -425,11 +430,14 @@ class TestRetrievalEvaluator:
 # compare_v1_v2
 # ──────────────────────────────────────────────
 
+
 class TestCompareV1V2:
     def test_v1_none_describes_first_implementation(self) -> None:
         v2 = RetrievalReport(
-            domain_accuracy=0.95, table_recall_at_k=0.92,
-            column_recall=0.88, total_questions=5,
+            domain_accuracy=0.95,
+            table_recall_at_k=0.92,
+            column_recall=0.88,
+            total_questions=5,
         )
         text = compare_v1_v2(None, v2)
         assert "V1" in text
@@ -438,10 +446,14 @@ class TestCompareV1V2:
 
     def test_v1_provided_shows_delta(self) -> None:
         v1 = RetrievalReport(
-            domain_accuracy=0.90, table_recall_at_k=0.85, column_recall=0.80,
+            domain_accuracy=0.90,
+            table_recall_at_k=0.85,
+            column_recall=0.80,
         )
         v2 = RetrievalReport(
-            domain_accuracy=0.98, table_recall_at_k=0.97, column_recall=0.95,
+            domain_accuracy=0.98,
+            table_recall_at_k=0.97,
+            column_recall=0.95,
         )
         text = compare_v1_v2(v1, v2)
         assert "90.0%" in text  # v1 domain accuracy

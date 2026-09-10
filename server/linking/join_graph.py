@@ -37,22 +37,23 @@ logger = logging.getLogger(__name__)
 # ORM 模型：表关系定义
 # ──────────────────────────────────────────────
 
+
 class RelationshipCardinality(enum.StrEnum):
     """JOIN 关系的基数类型。"""
 
     ONE_TO_ONE = "one_to_one"
-    ONE_TO_MANY = "one_to_many"     # 左表一行对应右表多行（通常是维度 → 事实）
-    MANY_TO_ONE = "many_to_one"     # 左表多行对应右表一行（通常是事实 → 维度）
-    MANY_TO_MANY = "many_to_many"   # 需要桥接表，直接 JOIN 会扇出
+    ONE_TO_MANY = "one_to_many"  # 左表一行对应右表多行（通常是维度 → 事实）
+    MANY_TO_ONE = "many_to_one"  # 左表多行对应右表一行（通常是事实 → 维度）
+    MANY_TO_MANY = "many_to_many"  # 需要桥接表，直接 JOIN 会扇出
 
 
 class RelationshipPurpose(enum.StrEnum):
     """关系的业务用途，决定检索时是否允许使用该边。"""
 
-    JOIN = "join"               # 正常 JOIN 路径
-    LOOKUP = "lookup"           # 只用于维度查找，不用于聚合
-    AGGREGATE_JOIN = "agg_join" # 必须预聚合才能使用的关联
-    BRIDGE = "bridge"           # 纯桥接表，不携带业务含义
+    JOIN = "join"  # 正常 JOIN 路径
+    LOOKUP = "lookup"  # 只用于维度查找，不用于聚合
+    AGGREGATE_JOIN = "agg_join"  # 必须预聚合才能使用的关联
+    BRIDGE = "bridge"  # 纯桥接表，不携带业务含义
 
 
 class TableRelationship(Base):
@@ -105,6 +106,7 @@ class TableRelationship(Base):
 # ──────────────────────────────────────────────
 # 内存图数据结构
 # ──────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class GraphEdge:
@@ -193,7 +195,7 @@ class JoinGraph:
         self._nodes: set[str] = set()
 
     @classmethod
-    def load_from_records(cls, relationships: list[TableRelationship]) -> "JoinGraph":
+    def load_from_records(cls, relationships: list[TableRelationship]) -> JoinGraph:
         """从 ORM 对象列表构建内存图。
 
         只加载 is_active=True 的关系，忽略已废弃的关系。
@@ -301,7 +303,7 @@ class JoinGraph:
 
         # 对每对表寻找路径
         for i, src in enumerate(selected_tables):
-            for tgt in selected_tables[i + 1:]:
+            for tgt in selected_tables[i + 1 :]:
                 found = self.find_paths(src, tgt)
                 if not found:
                     # 尝试反向
@@ -450,7 +452,7 @@ def build_graph_from_foreign_keys(
             continue
 
         # 用临时 TableRelationship-like 对象（鸭子类型）
-        fake_rel = _FakeRelationship(
+        fake_rel = _FakeRelationship(  # noqa: F841
             id=rel_id,
             from_table=from_table,
             to_table=ref_table,

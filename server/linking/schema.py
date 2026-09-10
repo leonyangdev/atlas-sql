@@ -39,10 +39,10 @@ logger = logging.getLogger(__name__)
 class LinkType(enum.StrEnum):
     """链接的目标类型。"""
 
-    COLUMN = "column"      # 指向物理列（table.column）
-    METRIC = "metric"      # 指向语义层指标（需要 V3 展开）
-    TABLE = "table"        # 指向整张表（例如维度表）
-    UNKNOWN = "unknown"    # 无法确定
+    COLUMN = "column"  # 指向物理列（table.column）
+    METRIC = "metric"  # 指向语义层指标（需要 V3 展开）
+    TABLE = "table"  # 指向整张表（例如维度表）
+    UNKNOWN = "unknown"  # 无法确定
 
 
 @dataclass(frozen=True)
@@ -166,9 +166,9 @@ class SchemaLinker:
         if requires_clarification:
             parts = []
             if unlinked:
-                parts.append(f"无法识别的概念：{"、".join(unlinked)}")
+                parts.append(f"无法识别的概念：{'、'.join(unlinked)}")
             if conflicted:
-                parts.append(f"存在歧义的概念：{"、".join(lnk.source_text for lnk in conflicted)}")
+                parts.append(f"存在歧义的概念：{'、'.join(lnk.source_text for lnk in conflicted)}")
             clarification = "；".join(parts) + "，请您进一步说明。"
 
         return SchemaLinkResult(
@@ -212,9 +212,7 @@ class SchemaLinker:
         # 找不到 → 返回 None，调用方记入 unlinked
         return None
 
-    def _link_dimension(
-        self, text: str, schema_context: SchemaContext
-    ) -> SchemaLink | None:
+    def _link_dimension(self, text: str, schema_context: SchemaContext) -> SchemaLink | None:
         """将维度关键词链接到候选表中的具体表。"""
         # 在召回的表中查找 business_name 或 table_name 包含该维度词的表
         matches: list[str] = []
