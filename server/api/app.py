@@ -122,7 +122,9 @@ def create_app(
     return app
 
 
-def _start_celery_worker(settings: Settings) -> "subprocess.Popen[bytes] | None":  # pragma: no cover
+def _start_celery_worker(
+    settings: Settings,
+) -> "subprocess.Popen[bytes] | None":  # pragma: no cover
     """在子进程中启动 Celery worker，失败时只记录警告，不阻断 API 启动。
 
     设计原则：

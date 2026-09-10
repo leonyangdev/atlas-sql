@@ -1005,9 +1005,9 @@ class TestBGERerankerEmptyCandidates:
 
     async def test_inspect_with_injected_retriever(self) -> None:
         """注入 retriever / linker / join_graph 时，相关分支被覆盖。"""
-        import httpx
         from unittest.mock import AsyncMock, MagicMock
 
+        import httpx
         from fastapi import FastAPI
 
         from server.api.retrieval_workbench import router
