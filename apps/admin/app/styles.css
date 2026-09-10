@@ -74,7 +74,7 @@ code { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; b
 .token-input:focus { outline: 2px solid #70b7ff; }
 .field-hint { color: #4a6080; font-size: 12px; }
 .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
-.btn { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; }
+.btn { display: inline-block; padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.15s; text-decoration: none; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-secondary { background: #1a2840; color: #aebdd2; }
 .btn-secondary:hover:not(:disabled) { background: #1e3050; }
@@ -94,3 +94,15 @@ code { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; b
 .clear-filter { color: #f87171; text-decoration: none; margin-left: 8px; }
 .clear-filter:hover { text-decoration: underline; }
 
+
+/* ── 新建表单 ── */
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 16px; }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+.form-field.full-width { grid-column: 1 / -1; }
+.form-label { color: #70b7ff; font-size: 13px; font-weight: 500; }
+.form-input { background: #121f33; border: 1px solid #293952; border-radius: 6px; color: #eef4ff; padding: 9px 12px; font-size: 14px; width: 100%; font-family: inherit; }
+.form-input:focus { outline: 2px solid #70b7ff; outline-offset: 1px; }
+.form-input::placeholder { color: #4a6080; }
+select.form-input { cursor: pointer; }
+textarea.form-input { resize: vertical; }

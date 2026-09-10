@@ -100,8 +100,13 @@ export default function DatasourcesPage() {
           <Link href="/">← 控制台</Link>
         </p>
         <h1>数据源管理</h1>
-        <p>已登记的数据库连接。通过 API 登记后，触发同步采集表和列的元数据。</p>
+        <p>已登记的数据库连接。触发同步后，AtlasSQL 会自动采集表和列的元数据。</p>
       </header>
+      <div style={{ marginTop: 24 }}>
+        <Link href="/datasources/new" className="btn btn-primary">
+          + 登记数据源
+        </Link>
+      </div>
       <DatasourceList />
     </main>
   );
