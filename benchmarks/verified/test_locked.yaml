@@ -1,0 +1,141 @@
+# 锁定测试集（is_test_locked: true）
+# 这些样例属于黄金评测集，NOT 可被 few-shot 召回，防止题库泄漏。
+# 用于 V3-S06 回归评测，与可信召回集严格隔离。
+
+domain: sales
+schema_version: "001"
+semantic_version_ref: "net_sales:v1"
+
+queries:
+  - question: "2026 年 7 月销售额是多少？"
+    sql: |
+      SELECT SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-08-01 00:00:00+08:00'
+    tags: [net_sales, 月度, 测试集]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: true
+
+  - question: "2026 年 8 月客单价是多少？"
+    sql: |
+      SELECT
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.id), 0) AS average_order_value
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-08-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-09-01 00:00:00+08:00'
+    tags: [average_order_value, 月度, 测试集]
+    dependent_metric_ids: [average_order_value, net_sales, paid_order_count]
+    is_test_locked: true
+
+  - question: "华北区域 2026 年上半年的退款率"
+    sql: |
+      WITH sales AS (
+        SELECT SUM(foi.net_amount) AS gross_paid_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'North China'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+      ),
+      refunds AS (
+        SELECT SUM(fri.refund_amount) AS refunded_amount
+        FROM fact_refund_item fri
+        JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        JOIN fact_order_item foi ON foi.id = fri.order_item_id
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'North China'
+        WHERE fr.refunded_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fr.refunded_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+      )
+      SELECT COALESCE(r.refunded_amount, 0) / NULLIF(s.gross_paid_sales, 0) AS refund_rate
+      FROM sales s, refunds r
+    tags: [refund_rate, 华北, 测试集]
+    dependent_metric_ids: [refund_rate]
+    is_test_locked: true
+
+  - question: "2026 年第三季度销售量最高的 5 个 SKU"
+    sql: |
+      SELECT
+        ds.sku_name,
+        SUM(foi.quantity) - COALESCE(SUM(fri.refund_quantity), 0) AS sales_quantity
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_sku ds ON ds.id = foi.sku_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-10-01 00:00:00+08:00'
+      GROUP BY ds.sku_name
+      ORDER BY sales_quantity DESC
+      LIMIT 5
+    tags: [sales_quantity, SKU, 排名, Q3, 测试集]
+    dependent_metric_ids: [sales_quantity]
+    is_test_locked: true
+
+  - question: "销售额下降但毛利率提升的城市"
+    sql: |
+      WITH current_period AS (
+        SELECT
+          dc.city_name,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales,
+          SUM(foi.net_amount - foi.cost_amount) /
+            NULLIF(SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0), 0) AS gross_margin_rate
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+        GROUP BY dc.city_name
+      ),
+      prior_period AS (
+        SELECT
+          dc.city_name,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales,
+          SUM(foi.net_amount - foi.cost_amount) /
+            NULLIF(SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0), 0) AS gross_margin_rate
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2025-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        GROUP BY dc.city_name
+      )
+      SELECT
+        c.city_name,
+        c.net_sales AS current_net_sales,
+        p.net_sales AS prior_net_sales,
+        c.gross_margin_rate AS current_margin,
+        p.gross_margin_rate AS prior_margin
+      FROM current_period c
+      JOIN prior_period p ON p.city_name = c.city_name
+      WHERE c.net_sales < p.net_sales
+        AND c.gross_margin_rate > p.gross_margin_rate
+    tags: [net_sales, gross_margin_rate, 异动, 测试集, 高难度]
+    dependent_metric_ids: [net_sales, gross_margin_rate]
+    is_test_locked: true

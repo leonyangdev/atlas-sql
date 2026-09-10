@@ -1,0 +1,58 @@
+# Store 域可信查询样例
+domain: store
+schema_version: "001"
+semantic_version_ref: "store_net_sales:v1"
+
+queries:
+  - question: "各门店 2026 年的线下销售额排名"
+    sql: |
+      SELECT
+        ds.store_name,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS store_net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id AND fo.channel_type = 'OFFLINE'
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      GROUP BY ds.store_name
+      ORDER BY store_net_sales DESC
+    tags: [store_net_sales, 门店, 排名, 线下]
+    dependent_metric_ids: [store_net_sales]
+    is_test_locked: false
+
+  - question: "华东各城市线下客流量（到店客户数）"
+    sql: |
+      SELECT
+        dc.city_name,
+        COUNT(DISTINCT fo.customer_id) AS store_customer_count
+      FROM fact_order fo
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true AND fo.channel_type = 'OFFLINE'
+      JOIN dim_city dc ON dc.id = ds.city_id
+      JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'East China'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+      GROUP BY dc.city_name
+      ORDER BY store_customer_count DESC
+    tags: [store_customer_count, 华东, 线下, 城市]
+    dependent_metric_ids: [store_customer_count]
+    is_test_locked: false
+
+  - question: "线上线下销售额占比分别是多少？"
+    sql: |
+      SELECT
+        fo.channel_type,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales,
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          SUM(SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) OVER () AS channel_ratio
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+      GROUP BY fo.channel_type
+    tags: [channel_mix_online_ratio, 渠道占比, 窗口函数]
+    dependent_metric_ids: [online_net_sales, store_net_sales, omnichannel_net_sales]
+    is_test_locked: false

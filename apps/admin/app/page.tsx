@@ -31,6 +31,12 @@ const modules = [
     desc: "查看元数据同步历史和失败任务",
     ready: true,
   },
+  {
+    href: "/semantic",
+    label: "语义层",
+    desc: "管理指标定义生命周期（Draft → Testing → Published），版本对比与回滚",
+    ready: true,
+  },
 ];
 
 export default function AdminHome() {

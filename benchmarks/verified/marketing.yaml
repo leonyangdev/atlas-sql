@@ -1,0 +1,73 @@
+# Marketing 域可信查询样例
+domain: marketing
+schema_version: "001"
+semantic_version_ref: "roi:v1,coupon_discount_amount:v1"
+
+queries:
+  - question: "2026 年各营销活动的 ROI 是多少？"
+    sql: |
+      WITH campaign_sales AS (
+        SELECT fo.campaign_id,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order fo
+        JOIN fact_order_item foi ON foi.order_id = fo.id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.campaign_id IS NOT NULL
+        GROUP BY fo.campaign_id
+      ),
+      campaign_spend AS (
+        SELECT campaign_id, SUM(amount) AS marketing_spend
+        FROM fact_marketing_spend
+        WHERE is_cancelled = false
+        GROUP BY campaign_id
+      )
+      SELECT
+        dc.campaign_name,
+        cs.net_sales,
+        csp.marketing_spend,
+        cs.net_sales / NULLIF(csp.marketing_spend, 0) AS roi
+      FROM campaign_sales cs
+      JOIN campaign_spend csp ON csp.campaign_id = cs.campaign_id
+      JOIN dim_campaign dc ON dc.id = cs.campaign_id
+      ORDER BY roi DESC
+    tags: [roi, 活动, 营销]
+    dependent_metric_ids: [roi, net_sales, marketing_spend]
+    is_test_locked: false
+
+  - question: "优惠券核销率最高的 5 个活动"
+    sql: |
+      SELECT
+        dc.campaign_name,
+        COUNT(DISTINCT fo.coupon_id) AS coupon_usage_count,
+        dc.coupon_issued_count,
+        COUNT(DISTINCT fo.coupon_id)::FLOAT /
+          NULLIF(dc.coupon_issued_count, 0) AS coupon_conversion_rate
+      FROM fact_order fo
+      JOIN dim_campaign dc ON dc.id = fo.campaign_id
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.coupon_id IS NOT NULL
+      GROUP BY dc.campaign_name, dc.coupon_issued_count
+      ORDER BY coupon_conversion_rate DESC
+      LIMIT 5
+    tags: [coupon_conversion_rate, 优惠券, 排名]
+    dependent_metric_ids: [coupon_conversion_rate, coupon_usage_count]
+    is_test_locked: false
+
+  - question: "2026 年各渠道的营销费用"
+    sql: |
+      SELECT
+        dch.channel_name,
+        SUM(fms.amount) AS marketing_spend
+      FROM fact_marketing_spend fms
+      JOIN dim_channel dch ON dch.id = fms.channel_id
+      WHERE fms.is_cancelled = false
+        AND fms.spend_date >= '2026-01-01'
+        AND fms.spend_date < '2027-01-01'
+      GROUP BY dch.channel_name
+      ORDER BY marketing_spend DESC
+    tags: [marketing_spend, 渠道]
+    dependent_metric_ids: [marketing_spend]
+    is_test_locked: false

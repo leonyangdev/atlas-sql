@@ -1,0 +1,840 @@
+# V3 核心指标目录
+# catalog_version: 3.0.0
+# 状态：草案（DRAFT），经 V3-S01-T03 手算验证后提交审核，通过 V3-S02 状态机发布。
+# 审核人：NovaRetail Analytics Council（模拟）
+# 审核时间：待审核
+#
+# 覆盖 7 个业务域：Sales / Customer / Finance / Product / Inventory / Marketing / Store
+# 指标数量：40 个
+#
+# 手算验证记录（关键指标）：
+#   net_sales：
+#     2026-01 明细数据：3 笔订单
+#       order_001: net_amount=500, is_test=false, status=PAID
+#       order_002: net_amount=300, is_test=false, status=PAID
+#       order_003: net_amount=200, is_test=true, status=PAID  ← 排除
+#     退款：refund_001 关联 order_001，refund_amount=100, refund_status=REFUNDED
+#     预期 net_sales = (500+300) - 100 = 700
+#     公式：SUM(net_amount WHERE 条件) - SUM(refund_amount WHERE REFUNDED)
+#
+#   gross_margin_rate：
+#     不能用 AVG(item_gross_margin_rate)，必须 SUM(gross_profit)/SUM(net_sales)。
+#     原因：行级毛利率受品类和数量混合影响，简单平均会产生权重错误。
+#
+#   inventory_available_quantity：
+#     禁止 SUM 跨多个快照日期，因为每个仓库 SKU 每日只有一个期末快照。
+#     正确：取目标日期每个 (warehouse_id, sku_id) 的最新 snapshot，再 SUM。
+#
+#   refund_rate：
+#     分子 refunded_amount 按退款发生时间，分母 gross_paid_sales 按支付时间。
+#     因此这是「期间现金流口径」，不是「原订单归属口径」。
+#
+#   average_order_value：
+#     分子分母必须使用同一支付时间窗口，不能跨期混合。
+#
+#   new_customer_count：
+#     按客户首次有效支付时间（first_valid_paid_at）归属，不按注册时间。
+
+catalog_version: 3.0.0
+status: draft
+defaults:
+  timezone: Asia/Shanghai
+  currency: CNY
+  interval_convention: "[start, end)"
+  tax_treatment: tax_inclusive
+  order_time_role: paid_at
+  refund_time_role: refunded_at
+
+metrics:
+  # ─────────────────────────────────────────
+  # 域：Sales（销售）
+  # ─────────────────────────────────────────
+
+  - id: net_sales
+    label: 销售额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_refund.refund_status = 'REFUNDED' WHEN refund rows are joined"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.order_status"
+      - "fact_order.is_test"
+      - "fact_refund_item.refund_amount"
+      - "fact_refund.refund_status"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 净销售额
+      - 营收
+      - 销售收入
+      - 销售金额
+      - GMV净额
+    time_rule_note: >
+      销售按 paid_at 归属，退款按 refunded_at 归属；跨期退款回冲退款发生期，
+      不回调原订单期销售额。财务域「入账收入」是不同口径，不能混用。
+    warning: null
+
+  - id: gross_paid_sales
+    label: 含退款销售额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.order_status"
+      - "fact_order.is_test"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 含退销售额
+      - 毛销售额
+    time_rule_note: "按 paid_at 归属，不扣除退款；用作 refund_rate 的分母。"
+
+  - id: paid_order_count
+    label: 有效订单量
+    domain: sales
+    grain: order
+    expression: "COUNT(DISTINCT fact_order.id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order.id"
+      - "fact_order.order_status"
+      - "fact_order.is_test"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 订单量
+      - 订单数
+      - 下单量
+      - 有效订单数
+    time_rule_note: "按 paid_at 归属；同一订单多次支付只计一次。"
+
+  - id: sales_quantity
+    label: 销售数量
+    domain: sales
+    grain: order_item
+    expression: >
+      SUM(fact_order_item.quantity) -
+      COALESCE(SUM(fact_refund_item.refund_quantity), 0)
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_refund.refund_status = 'REFUNDED' WHEN refund rows are joined"
+    dependent_columns:
+      - "fact_order_item.quantity"
+      - "fact_refund_item.refund_quantity"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 销量
+      - 件数
+      - 卖出数量
+
+  - id: average_order_value
+    label: 客单价
+    domain: sales
+    grain: period
+    expression: "net_sales / NULLIF(paid_order_count, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - AOV
+      - 单均价
+      - 平均客单价
+    time_rule_note: "分子（net_sales）和分母（paid_order_count）必须使用同一支付时间窗口，不能跨期混合。"
+
+  - id: items_per_order
+    label: 件单价
+    domain: sales
+    grain: period
+    expression: "sales_quantity / NULLIF(paid_order_count, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 每单件数
+      - 连带率
+
+  - id: refunded_amount
+    label: 退款金额
+    domain: sales
+    grain: refund_item
+    expression: "SUM(fact_refund_item.refund_amount)"
+    required_filters:
+      - "fact_refund.refund_status = 'REFUNDED'"
+    dependent_columns:
+      - "fact_refund_item.refund_amount"
+      - "fact_refund.refund_status"
+    time_role: refunded_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 退款额
+      - 退货金额
+    time_rule_note: "按 refunded_at 归属；跨期退款计入退款发生期，不回溯原订单期。"
+
+  - id: refund_count
+    label: 退款笔数
+    domain: sales
+    grain: refund_item
+    expression: "COUNT(DISTINCT fact_refund.id)"
+    required_filters:
+      - "fact_refund.refund_status = 'REFUNDED'"
+    dependent_columns:
+      - "fact_refund.id"
+      - "fact_refund.refund_status"
+    time_role: refunded_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 退款单量
+      - 退货笔数
+
+  - id: refund_rate
+    label: 退款率
+    domain: sales
+    grain: period
+    expression: "refunded_amount / NULLIF(gross_paid_sales, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 退货率
+    time_rule_note: >
+      退款金额按 refunded_at，分母（含退款销售额）按 paid_at。
+      这是「期间现金流口径」。若需「原订单归属口径」需使用 cohort_refund_rate（另立指标）。
+
+  - id: discount_amount
+    label: 优惠金额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.discount_amount)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.discount_amount"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 折扣金额
+      - 让利金额
+
+  - id: discount_rate
+    label: 折扣率
+    domain: sales
+    grain: period
+    expression: "discount_amount / NULLIF(discount_amount + net_sales, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 优惠率
+      - 让利率
+
+  # ─────────────────────────────────────────
+  # 域：Customer（客户）
+  # ─────────────────────────────────────────
+
+  - id: new_customer_count
+    label: 新客户数
+    domain: customer
+    grain: customer
+    expression: >
+      COUNT(DISTINCT dim_customer.id)
+      WHERE dim_customer.first_valid_paid_at IS IN the analysis period
+    required_filters:
+      - "first order is non-test and paid or completed"
+    dependent_columns:
+      - "dim_customer.id"
+      - "dim_customer.first_valid_paid_at"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 新用户数
+      - 新客数
+      - 首购客户数
+    time_rule_note: "按客户首次有效支付时间（first_valid_paid_at）归属，不按注册时间。"
+
+  - id: active_customer_count
+    label: 活跃客户数
+    domain: customer
+    grain: customer
+    expression: "COUNT(DISTINCT fact_order.customer_id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order.customer_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 活跃用户数
+      - 购买客户数
+      - 下单客户数
+
+  - id: repeat_customer_count
+    label: 复购客户数
+    domain: customer
+    grain: customer
+    expression: >
+      COUNT(DISTINCT customer_id)
+      WHERE customer has ≥2 valid paid orders in the period
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order.customer_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 回头客数量
+
+  - id: repurchase_rate
+    label: 复购率
+    domain: customer
+    grain: period
+    expression: "repeat_customer_count / NULLIF(active_customer_count, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 回购率
+      - 老客占比
+
+  - id: customer_lifetime_value
+    label: 客户生命周期价值
+    domain: customer
+    grain: customer
+    expression: "SUM(net_sales) per customer over all time"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.customer_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - LTV
+      - CLV
+      - 客户价值
+
+  - id: average_customer_revenue
+    label: 人均消费
+    domain: customer
+    grain: period
+    expression: "net_sales / NULLIF(active_customer_count, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 人均销售额
+      - 客均消费
+
+  # ─────────────────────────────────────────
+  # 域：Finance（财务）
+  # ─────────────────────────────────────────
+
+  - id: gross_profit
+    label: 毛利额
+    domain: finance
+    grain: order_item
+    expression: "net_sales - recognized_cost"
+    required_filters: []
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order_item.cost_amount"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    is_sensitive: true
+    synonyms:
+      - 毛利
+      - 利润额
+    time_rule_note: "成本与销售使用相同业务期间；未入账成本期间数据不完整。"
+
+  - id: gross_margin_rate
+    label: 毛利率
+    domain: finance
+    grain: period
+    expression: "SUM(gross_profit) / NULLIF(SUM(net_sales), 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    is_sensitive: true
+    synonyms:
+      - 毛利润率
+      - 毛利占比
+    time_rule_note: "分子和分母使用相同期间、币种和退款口径。"
+    warning: "禁止对明细行毛利率做简单平均（AVG），必须用 SUM(毛利)/SUM(销售额)。"
+
+  - id: recognized_cost
+    label: 已入账成本
+    domain: finance
+    grain: order_item
+    expression: "SUM(fact_order_item.cost_amount)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.cost_amount"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    is_sensitive: true
+    synonyms:
+      - 成本
+      - 商品成本
+
+  - id: finance_revenue
+    label: 财务收入
+    domain: finance
+    grain: period
+    expression: "SUM(fact_finance_ledger.recognized_amount)"
+    required_filters:
+      - "fact_finance_ledger.entry_type = 'REVENUE'"
+      - "fact_finance_ledger.is_reversed = false"
+    dependent_columns:
+      - "fact_finance_ledger.recognized_amount"
+      - "fact_finance_ledger.entry_type"
+      - "fact_finance_ledger.is_reversed"
+    time_role: event_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    is_sensitive: true
+    synonyms:
+      - 入账收入
+      - 确认收入
+    time_rule_note: >
+      财务域「入账收入」按账务确认时间（entry_date）归属，
+      与销售域「销售额」（按 paid_at）不是同一口径，禁止混用。
+
+  # ─────────────────────────────────────────
+  # 域：Product（商品）
+  # ─────────────────────────────────────────
+
+  - id: active_sku_count
+    label: 在售 SKU 数
+    domain: sales
+    grain: period
+    expression: "COUNT(DISTINCT fact_order_item.sku_id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.sku_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 动销 SKU 数
+      - 有销售 SKU 数
+
+  - id: sku_sales_concentration
+    label: SKU 销售集中度
+    domain: sales
+    grain: period
+    expression: >
+      SUM(top10_sku_net_sales) / NULLIF(SUM(net_sales), 0)
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 头部 SKU 集中度
+    warning: "需使用子查询先取 TOP 10 SKU，再计算占比；不能直接在聚合中截取。"
+
+  - id: brand_net_sales
+    label: 品牌销售额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "dim_brand.brand_id = :brand_id"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "dim_product.brand_id"
+    allowed_dimensions:
+      - dim_brand
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 品牌销售额
+
+  # ─────────────────────────────────────────
+  # 域：Inventory（库存）
+  # ─────────────────────────────────────────
+
+  - id: inventory_available_quantity
+    label: 可用库存
+    domain: inventory
+    grain: snapshot_date
+    expression: >
+      SUM(fact_inventory_snapshot.available_quantity)
+      WHERE snapshot is the latest per (warehouse_id, sku_id) on the target date
+    required_filters: []
+    dependent_columns:
+      - "fact_inventory_snapshot.available_quantity"
+      - "fact_inventory_snapshot.snapshot_date"
+      - "fact_inventory_snapshot.warehouse_id"
+      - "fact_inventory_snapshot.sku_id"
+    time_role: snapshot_date
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 库存数量
+      - 可售库存
+      - 库存余量
+    time_rule_note: "取目标时点每个 (warehouse_id, sku_id) 的日末快照，禁止跨日直接求和。"
+    warning: "禁止对多个快照日期的 available_quantity 直接 SUM，会导致库存虚增。"
+
+  - id: inventory_turnover_days
+    label: 库存周转天数
+    domain: inventory
+    grain: period
+    expression: "AVG(fact_inventory_snapshot.available_quantity) / NULLIF(sales_quantity / period_days, 0)"
+    required_filters: []
+    dependent_columns:
+      - "fact_inventory_snapshot.available_quantity"
+      - "fact_order_item.quantity"
+    time_role: snapshot_date
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 库存周转
+      - 周转天数
+    warning: "分母日均销量为 0 时返回 NULL；库存数取期间平均日末快照，不取单日快照。"
+
+  - id: stockout_sku_count
+    label: 缺货 SKU 数
+    domain: inventory
+    grain: snapshot_date
+    expression: >
+      COUNT(DISTINCT sku_id)
+      WHERE available_quantity = 0 on the latest snapshot of the target date
+    required_filters: []
+    dependent_columns:
+      - "fact_inventory_snapshot.sku_id"
+      - "fact_inventory_snapshot.available_quantity"
+    time_role: snapshot_date
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 零库存 SKU 数
+      - 断货 SKU 数
+
+  - id: inbound_quantity
+    label: 入库数量
+    domain: inventory
+    grain: order_item
+    expression: "SUM(fact_inventory_transaction.quantity)"
+    required_filters:
+      - "fact_inventory_transaction.transaction_type = 'INBOUND'"
+    dependent_columns:
+      - "fact_inventory_transaction.quantity"
+      - "fact_inventory_transaction.transaction_type"
+    time_role: event_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 收货数量
+      - 入仓数量
+
+  - id: outbound_quantity
+    label: 出库数量
+    domain: inventory
+    grain: order_item
+    expression: "SUM(fact_inventory_transaction.quantity)"
+    required_filters:
+      - "fact_inventory_transaction.transaction_type = 'OUTBOUND'"
+    dependent_columns:
+      - "fact_inventory_transaction.quantity"
+      - "fact_inventory_transaction.transaction_type"
+    time_role: event_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 发货数量
+      - 出仓数量
+
+  # ─────────────────────────────────────────
+  # 域：Marketing（营销）
+  # ─────────────────────────────────────────
+
+  - id: marketing_spend
+    label: 营销费用
+    domain: marketing
+    grain: period
+    expression: "SUM(fact_marketing_spend.amount)"
+    required_filters:
+      - "fact_marketing_spend.is_cancelled = false"
+    dependent_columns:
+      - "fact_marketing_spend.amount"
+      - "fact_marketing_spend.is_cancelled"
+    time_role: event_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 营销投入
+      - 推广费用
+      - 广告费用
+
+  - id: roi
+    label: 营销 ROI
+    domain: marketing
+    grain: period
+    expression: "net_sales / NULLIF(marketing_spend, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: event_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 投入产出比
+      - 广告回报率
+      - ROAS
+
+  - id: coupon_discount_amount
+    label: 优惠券折扣金额
+    domain: marketing
+    grain: order_item
+    expression: "SUM(fact_order_item.coupon_discount_amount)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.coupon_discount_amount"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 券折扣金额
+      - 优惠券金额
+
+  - id: coupon_usage_count
+    label: 优惠券使用次数
+    domain: marketing
+    grain: period
+    expression: "COUNT(DISTINCT fact_order.coupon_id) WHERE coupon_id IS NOT NULL"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order.coupon_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 用券次数
+      - 优惠券核销次数
+
+  - id: coupon_conversion_rate
+    label: 优惠券转化率
+    domain: marketing
+    grain: period
+    expression: "coupon_usage_count / NULLIF(coupon_issued_count, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 优惠券核销率
+      - 券核销率
+
+  - id: campaign_order_count
+    label: 活动带动订单量
+    domain: marketing
+    grain: order
+    expression: "COUNT(DISTINCT fact_order.id) WHERE campaign_id IS NOT NULL"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order.id"
+      - "fact_order.campaign_id"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 活动订单量
+      - 促销订单量
+
+  # ─────────────────────────────────────────
+  # 域：Store（门店）
+  # ─────────────────────────────────────────
+
+  - id: store_net_sales
+    label: 门店销售额
+    domain: store
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_order.channel_type = 'OFFLINE'"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.channel_type"
+    allowed_dimensions:
+      - dim_store
+      - dim_city
+      - dim_region
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 线下销售额
+      - 实体店销售额
+
+  - id: online_net_sales
+    label: 线上销售额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_order.channel_type = 'ONLINE'"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.channel_type"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 电商销售额
+      - 网上销售额
+
+  - id: store_order_count
+    label: 门店订单量
+    domain: store
+    grain: order
+    expression: "COUNT(DISTINCT fact_order.id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_order.channel_type = 'OFFLINE'"
+    dependent_columns:
+      - "fact_order.id"
+      - "fact_order.channel_type"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 线下订单量
+
+  - id: store_customer_count
+    label: 门店到店客户数
+    domain: store
+    grain: customer
+    expression: "COUNT(DISTINCT fact_order.customer_id)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_order.channel_type = 'OFFLINE'"
+    dependent_columns:
+      - "fact_order.customer_id"
+      - "fact_order.channel_type"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    synonyms:
+      - 到店人数
+      - 线下购客数
+
+  # ─────────────────────────────────────────
+  # 跨域综合指标
+  # ─────────────────────────────────────────
+
+  - id: omnichannel_net_sales
+    label: 全渠道销售额
+    domain: sales
+    grain: order_item
+    expression: "SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order.channel_type"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    synonyms:
+      - 全渠道GMV
+      - 总销售额
+    time_rule_note: "包含线上和线下所有渠道，是 store_net_sales + online_net_sales 的合集。"
+
+  - id: channel_mix_online_ratio
+    label: 线上渠道占比
+    domain: sales
+    grain: period
+    expression: "online_net_sales / NULLIF(omnichannel_net_sales, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 线上占比
+      - 电商占比
+
+  - id: yoy_sales_growth_rate
+    label: 销售额同比增长率
+    domain: sales
+    grain: period
+    expression: "(current_period_net_sales - prior_year_net_sales) / NULLIF(prior_year_net_sales, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 销售额同比
+      - 同比增长率
+      - YoY增长
+    time_rule_note: "当期 net_sales 与上一自然年同期 net_sales 对比；财年对比需使用 fiscal_calendar。"
+    warning: "当前期和对比期必须使用同一口径（相同过滤条件），不能跨指标版本对比。"
+
+  - id: mom_sales_growth_rate
+    label: 销售额环比增长率
+    domain: sales
+    grain: period
+    expression: "(current_month_net_sales - prior_month_net_sales) / NULLIF(prior_month_net_sales, 0)"
+    required_filters: []
+    dependent_columns: []
+    time_role: paid_at
+    zero_denominator_policy: null_with_reason
+    synonyms:
+      - 销售额环比
+      - 环比增长率
+      - MoM增长

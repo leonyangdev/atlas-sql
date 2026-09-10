@@ -1,0 +1,514 @@
+# Sales 域可信查询样例
+# 状态：DRAFT（需经 VerifiedQueryValidator 校验 + 人工审核后变为 VERIFIED）
+# 覆盖：net_sales / paid_order_count / sales_quantity / average_order_value /
+#       refund_rate / discount / 同比 / 环比 / 排名 / 多条件过滤
+# 近似重复隔离：同一问题的不同时间窗口变体归为同一家族，仅保留代表性写法
+
+domain: sales
+schema_version: "001"
+semantic_version_ref: "net_sales:v1,paid_order_count:v1"
+
+queries:
+  # ─── 净销售额 ─────────────────────────────────────────────
+
+  - question: "2026 年上半年销售额是多少？"
+    sql: |
+      SELECT
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id
+        AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+    tags: [net_sales, 时间过滤, 半年]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  - question: "华东地区今年的销售额是多少？"
+    sql: |
+      SELECT
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      JOIN dim_city dc ON dc.id = ds.city_id
+      JOIN dim_region dr ON dr.id = dc.region_id
+        AND dr.region_name = 'East China'
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id
+        AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+    tags: [net_sales, 区域过滤, 华东]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  - question: "2025 年全年各区域的销售额分别是多少？"
+    sql: |
+      SELECT
+        dr.region_name,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      JOIN dim_city dc ON dc.id = ds.city_id
+      JOIN dim_region dr ON dr.id = dc.region_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id
+        AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2025-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+      GROUP BY dr.region_name
+      ORDER BY net_sales DESC
+    tags: [net_sales, 区域分组, 2025]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  - question: "销售额最高的前 10 个城市是哪些？"
+    sql: |
+      SELECT
+        dc.city_name,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      JOIN dim_city dc ON dc.id = ds.city_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id
+        AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+      GROUP BY dc.city_name
+      ORDER BY net_sales DESC
+      LIMIT 10
+    tags: [net_sales, 排名, 城市]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  # ─── 同比 / 环比 ──────────────────────────────────────────
+
+  - question: "2026 年上半年销售额相比 2025 年同期增长了多少？"
+    sql: |
+      WITH current_period AS (
+        SELECT SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+      ),
+      prior_period AS (
+        SELECT SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2025-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2025-07-01 00:00:00+08:00'
+      )
+      SELECT
+        c.net_sales AS current_net_sales,
+        p.net_sales AS prior_net_sales,
+        (c.net_sales - p.net_sales) / NULLIF(p.net_sales, 0) AS yoy_growth_rate
+      FROM current_period c, prior_period p
+    tags: [net_sales, 同比, YoY, CTE]
+    dependent_metric_ids: [net_sales, yoy_sales_growth_rate]
+    is_test_locked: false
+
+  - question: "2026 年各月销售额环比变化是多少？"
+    sql: |
+      WITH monthly AS (
+        SELECT
+          DATE_TRUNC('month', fo.paid_at AT TIME ZONE 'Asia/Shanghai') AS month,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+        GROUP BY 1
+      )
+      SELECT
+        month,
+        net_sales,
+        LAG(net_sales) OVER (ORDER BY month) AS prev_month_sales,
+        (net_sales - LAG(net_sales) OVER (ORDER BY month)) /
+          NULLIF(LAG(net_sales) OVER (ORDER BY month), 0) AS mom_growth_rate
+      FROM monthly
+      ORDER BY month
+    tags: [net_sales, 环比, MoM, 趋势, 窗口函数]
+    dependent_metric_ids: [net_sales, mom_sales_growth_rate]
+    is_test_locked: false
+
+  # ─── 有效订单量 ────────────────────────────────────────────
+
+  - question: "查询 2026 年上半年的有效订单量"
+    sql: |
+      SELECT COUNT(DISTINCT fo.id) AS paid_order_count
+      FROM fact_order fo
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+    tags: [paid_order_count, 时间过滤]
+    dependent_metric_ids: [paid_order_count]
+    is_test_locked: false
+
+  - question: "各城市 2026 年的订单量排名"
+    sql: |
+      SELECT
+        dc.city_name,
+        COUNT(DISTINCT fo.id) AS paid_order_count
+      FROM fact_order fo
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      JOIN dim_city dc ON dc.id = ds.city_id
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      GROUP BY dc.city_name
+      ORDER BY paid_order_count DESC
+    tags: [paid_order_count, 城市, 排名]
+    dependent_metric_ids: [paid_order_count]
+    is_test_locked: false
+
+  # ─── 客单价 ───────────────────────────────────────────────
+
+  - question: "2026 年 1 月的客单价是多少？"
+    sql: |
+      SELECT
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.id), 0) AS average_order_value
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-02-01 00:00:00+08:00'
+    tags: [average_order_value, 客单价, 月度]
+    dependent_metric_ids: [average_order_value, net_sales, paid_order_count]
+    is_test_locked: false
+
+  - question: "各品类的客单价分别是多少？"
+    sql: |
+      SELECT
+        dpc.category_name,
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.id), 0) AS average_order_value
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+      JOIN dim_product_category dpc ON dpc.id = dp.category_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+      GROUP BY dpc.category_name
+      ORDER BY average_order_value DESC
+    tags: [average_order_value, 品类分组]
+    dependent_metric_ids: [average_order_value]
+    is_test_locked: false
+
+  # ─── 退款率 ───────────────────────────────────────────────
+
+  - question: "2026 年上半年各区域的退款率是多少？"
+    sql: |
+      WITH sales AS (
+        SELECT
+          dr.region_name,
+          SUM(foi.net_amount) AS gross_paid_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+        GROUP BY dr.region_name
+      ),
+      refunds AS (
+        SELECT
+          dr.region_name,
+          SUM(fri.refund_amount) AS refunded_amount
+        FROM fact_refund_item fri
+        JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        JOIN fact_order_item foi ON foi.id = fri.order_item_id
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id
+        WHERE fr.refunded_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fr.refunded_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+        GROUP BY dr.region_name
+      )
+      SELECT
+        s.region_name,
+        s.gross_paid_sales,
+        COALESCE(r.refunded_amount, 0) AS refunded_amount,
+        COALESCE(r.refunded_amount, 0) / NULLIF(s.gross_paid_sales, 0) AS refund_rate
+      FROM sales s
+      LEFT JOIN refunds r ON r.region_name = s.region_name
+      ORDER BY refund_rate DESC
+    tags: [refund_rate, 区域, CTE, 跨期退款]
+    dependent_metric_ids: [refund_rate, refunded_amount, gross_paid_sales]
+    is_test_locked: false
+
+  # ─── 多指标组合 ────────────────────────────────────────────
+
+  - question: "2026 年各月的销售额、订单量和客单价趋势"
+    sql: |
+      SELECT
+        DATE_TRUNC('month', fo.paid_at AT TIME ZONE 'Asia/Shanghai') AS month,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales,
+        COUNT(DISTINCT fo.id) AS paid_order_count,
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.id), 0) AS average_order_value
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      GROUP BY 1
+      ORDER BY 1
+    tags: [net_sales, paid_order_count, average_order_value, 趋势, 月度]
+    dependent_metric_ids: [net_sales, paid_order_count, average_order_value]
+    is_test_locked: false
+
+  - question: "华南区域销售额下降但订单量上升的月份有哪些？"
+    sql: |
+      WITH monthly AS (
+        SELECT
+          DATE_TRUNC('month', fo.paid_at AT TIME ZONE 'Asia/Shanghai') AS month,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales,
+          COUNT(DISTINCT fo.id) AS paid_order_count
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'South China'
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+        GROUP BY 1
+      )
+      SELECT
+        month,
+        net_sales,
+        paid_order_count,
+        net_sales - LAG(net_sales) OVER (ORDER BY month) AS net_sales_delta,
+        paid_order_count - LAG(paid_order_count) OVER (ORDER BY month) AS order_count_delta
+      FROM monthly
+      WHERE net_sales < LAG(net_sales) OVER (ORDER BY month)
+        AND paid_order_count > LAG(paid_order_count) OVER (ORDER BY month)
+    tags: [net_sales, paid_order_count, 华南, 异动, 窗口函数]
+    dependent_metric_ids: [net_sales, paid_order_count]
+    is_test_locked: false
+
+  # ─── 品牌 / 品类分析 ──────────────────────────────────────
+
+  - question: "苹果手机上个月销售额是多少？"
+    sql: |
+      SELECT
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+      JOIN dim_brand db ON db.id = dp.brand_id AND db.brand_name = 'Apple'
+      JOIN dim_product_category dpc ON dpc.id = dp.category_id
+        AND dpc.category_name = 'Smartphone'
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-08-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-09-01 00:00:00+08:00'
+    tags: [net_sales, 苹果, 手机, 品牌, value_linking]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  - question: "销售额前 5 的品牌是哪些？"
+    sql: |
+      SELECT
+        db.brand_name,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+      JOIN dim_brand db ON db.id = dp.brand_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+      GROUP BY db.brand_name
+      ORDER BY net_sales DESC
+      LIMIT 5
+    tags: [net_sales, 品牌排名, Top5]
+    dependent_metric_ids: [net_sales]
+    is_test_locked: false
+
+  # ─── 渠道分析 ─────────────────────────────────────────────
+
+  - question: "线上和线下渠道的销售额分别是多少？"
+    sql: |
+      SELECT
+        fo.channel_type,
+        SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+      GROUP BY fo.channel_type
+    tags: [net_sales, 渠道, 线上, 线下]
+    dependent_metric_ids: [net_sales, online_net_sales, store_net_sales]
+    is_test_locked: false
+
+  # ─── 折扣分析 ─────────────────────────────────────────────
+
+  - question: "2026 年各季度优惠券折扣金额是多少？"
+    sql: |
+      SELECT
+        DATE_TRUNC('quarter', fo.paid_at AT TIME ZONE 'Asia/Shanghai') AS quarter,
+        SUM(foi.coupon_discount_amount) AS coupon_discount_amount
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      GROUP BY 1
+      ORDER BY 1
+    tags: [coupon_discount_amount, 季度, 优惠券]
+    dependent_metric_ids: [coupon_discount_amount]
+    is_test_locked: false
+
+  # ─── 销售数量 ─────────────────────────────────────────────
+
+  - question: "2026 年上半年各品类的销售数量"
+    sql: |
+      SELECT
+        dpc.category_name,
+        SUM(foi.quantity) - COALESCE(SUM(fri.refund_quantity), 0) AS sales_quantity
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+      JOIN dim_product_category dpc ON dpc.id = dp.category_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+      GROUP BY dpc.category_name
+      ORDER BY sales_quantity DESC
+    tags: [sales_quantity, 品类]
+    dependent_metric_ids: [sales_quantity]
+    is_test_locked: false
+
+  # ─── 多条件复合过滤 ───────────────────────────────────────
+
+  - question: "华东地区 2026 年手机品类销售额同比增长多少？"
+    sql: |
+      WITH current_period AS (
+        SELECT SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'East China'
+        JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+        JOIN dim_product_category dpc ON dpc.id = dp.category_id AND dpc.category_name = 'Smartphone'
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      ),
+      prior_period AS (
+        SELECT SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'East China'
+        JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+        JOIN dim_product_category dpc ON dpc.id = dp.category_id AND dpc.category_name = 'Smartphone'
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2025-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+      )
+      SELECT
+        c.net_sales AS current_net_sales,
+        p.net_sales AS prior_net_sales,
+        (c.net_sales - p.net_sales) / NULLIF(p.net_sales, 0) AS yoy_growth_rate
+      FROM current_period c, prior_period p
+    tags: [net_sales, 同比, 华东, 手机, 多条件]
+    dependent_metric_ids: [net_sales, yoy_sales_growth_rate]
+    is_test_locked: false
+
+  # ─── 销售额下降城市筛选 ────────────────────────────────────
+
+  - question: "找出 2026 年上半年销售额同比下降超过 10% 的城市"
+    sql: |
+      WITH current_period AS (
+        SELECT dc.city_name,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+        GROUP BY dc.city_name
+      ),
+      prior_period AS (
+        SELECT dc.city_name,
+          SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0) AS net_sales
+        FROM fact_order_item foi
+        JOIN fact_order fo ON fo.id = foi.order_id
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+        LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2025-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2025-07-01 00:00:00+08:00'
+        GROUP BY dc.city_name
+      )
+      SELECT
+        c.city_name,
+        c.net_sales AS current_net_sales,
+        p.net_sales AS prior_net_sales,
+        (c.net_sales - p.net_sales) / NULLIF(p.net_sales, 0) AS yoy_growth_rate
+      FROM current_period c
+      JOIN prior_period p ON p.city_name = c.city_name
+      WHERE (c.net_sales - p.net_sales) / NULLIF(p.net_sales, 0) < -0.10
+      ORDER BY yoy_growth_rate
+    tags: [net_sales, 同比, 城市, 异动检测, 条件过滤]
+    dependent_metric_ids: [net_sales, yoy_sales_growth_rate]
+    is_test_locked: false

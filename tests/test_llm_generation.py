@@ -45,6 +45,7 @@ def make_context(timeout_ms: int = 5_000) -> QueryContext:
 def make_llm_request() -> LLMRequest:
     return LLMRequest(
         prompt='{"instruction":"output json"}',
+        system_prompt="You are a SQL generator.",
         prompt_hash="a" * 64,
         response_schema={"type": "object"},
         max_output_tokens=512,
@@ -166,18 +167,18 @@ def test_prompt_is_deterministic_and_contains_only_allowed_schema() -> None:
         schema_version="001",
         model_parameters={"provider": "fake", "model": "sql-v1"},
     )
-    parsed = json.loads(first.text)
+    parsed = json.loads(first.user_prompt)
 
     assert first == second
     assert first.version == PROMPT_VERSION
     assert len(first.prompt_hash) == 64
     assert parsed["dialect"] == "postgresql"
-    assert len(parsed["allowed_schema"]) == 15
+    assert len(parsed["allowed_schema"]) >= 1  # 按关键词动态裁剪后至少有 1 张表
     assert parsed["metric_drafts"][0]["id"] == "net_sales"
-    assert "order_no" not in first.text
-    assert "tenant_id" not in first.text
-    assert "test.yaml" not in first.text
-    assert "tune.yaml" not in first.text
+    assert "order_no" not in first.user_prompt
+    assert "tenant_id" not in first.user_prompt
+    assert "test.yaml" not in first.user_prompt
+    assert "tune.yaml" not in first.user_prompt
 
 
 def test_prompt_hash_changes_with_question_or_model_parameters() -> None:

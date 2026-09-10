@@ -82,6 +82,7 @@ def create_app(
     # 注册路由
     from server.api.query import router as query_router
     from server.api.trace import router as trace_router
+    from server.api.semantic import router as semantic_router
     from server.datasource.router import router as datasource_router
     from server.metadata.router import router as metadata_router
 
@@ -89,6 +90,7 @@ def create_app(
     app.include_router(metadata_router)
     app.include_router(query_router)
     app.include_router(trace_router)
+    app.include_router(semantic_router)
 
     @app.get("/health/live", tags=["health"])
     async def liveness() -> dict[str, str]:

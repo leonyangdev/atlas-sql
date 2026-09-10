@@ -1,0 +1,78 @@
+# Inventory 域可信查询样例
+domain: inventory
+schema_version: "001"
+semantic_version_ref: "inventory_available_quantity:v1"
+
+queries:
+  - question: "2026 年 9 月 10 日各仓库的可用库存是多少？"
+    sql: |
+      SELECT
+        dw.warehouse_name,
+        SUM(fis.available_quantity) AS inventory_available_quantity
+      FROM fact_inventory_snapshot fis
+      JOIN dim_warehouse dw ON dw.id = fis.warehouse_id
+      WHERE fis.snapshot_date = '2026-09-10'
+        AND fis.id IN (
+          SELECT MAX(id)
+          FROM fact_inventory_snapshot
+          WHERE snapshot_date = '2026-09-10'
+          GROUP BY warehouse_id, sku_id
+        )
+      GROUP BY dw.warehouse_name
+      ORDER BY inventory_available_quantity DESC
+    tags: [inventory_available_quantity, 快照, 仓库]
+    dependent_metric_ids: [inventory_available_quantity]
+    is_test_locked: false
+
+  - question: "当前零库存的 SKU 有多少个？"
+    sql: |
+      SELECT COUNT(DISTINCT fis.sku_id) AS stockout_sku_count
+      FROM fact_inventory_snapshot fis
+      WHERE fis.snapshot_date = CURRENT_DATE - 1
+        AND fis.available_quantity = 0
+        AND fis.id IN (
+          SELECT MAX(id) FROM fact_inventory_snapshot
+          WHERE snapshot_date = CURRENT_DATE - 1
+          GROUP BY warehouse_id, sku_id
+        )
+    tags: [stockout_sku_count, 零库存, 实时]
+    dependent_metric_ids: [stockout_sku_count, inventory_available_quantity]
+    is_test_locked: false
+
+  - question: "苹果手机在各仓库的库存分布"
+    sql: |
+      SELECT
+        dw.warehouse_name,
+        ds.sku_name,
+        fis.available_quantity
+      FROM fact_inventory_snapshot fis
+      JOIN dim_warehouse dw ON dw.id = fis.warehouse_id
+      JOIN dim_sku ds ON ds.id = fis.sku_id
+      JOIN dim_product dp ON dp.id = ds.product_id AND dp.is_current = true
+      JOIN dim_brand db ON db.id = dp.brand_id AND db.brand_name = 'Apple'
+      JOIN dim_product_category dpc ON dpc.id = dp.category_id
+        AND dpc.category_name = 'Smartphone'
+      WHERE fis.snapshot_date = CURRENT_DATE - 1
+        AND fis.id IN (
+          SELECT MAX(id) FROM fact_inventory_snapshot
+          WHERE snapshot_date = CURRENT_DATE - 1
+          GROUP BY warehouse_id, sku_id
+        )
+      ORDER BY fis.available_quantity DESC
+    tags: [inventory_available_quantity, 苹果, 手机, 仓库分布]
+    dependent_metric_ids: [inventory_available_quantity]
+    is_test_locked: false
+
+  - question: "2026 年 9 月份的入库数量和出库数量分别是多少？"
+    sql: |
+      SELECT
+        transaction_type,
+        SUM(quantity) AS quantity
+      FROM fact_inventory_transaction
+      WHERE transaction_type IN ('INBOUND', 'OUTBOUND')
+        AND transaction_at >= TIMESTAMPTZ '2026-09-01 00:00:00+08:00'
+        AND transaction_at < TIMESTAMPTZ '2026-10-01 00:00:00+08:00'
+      GROUP BY transaction_type
+    tags: [inbound_quantity, outbound_quantity, 月度]
+    dependent_metric_ids: [inbound_quantity, outbound_quantity]
+    is_test_locked: false

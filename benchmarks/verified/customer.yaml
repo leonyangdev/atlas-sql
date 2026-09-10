@@ -1,0 +1,131 @@
+# Customer 域可信查询样例
+domain: customer
+schema_version: "001"
+semantic_version_ref: "new_customer_count:v1,active_customer_count:v1"
+
+queries:
+  - question: "2026 年上半年新客户数量是多少？"
+    sql: |
+      SELECT COUNT(DISTINCT dc.id) AS new_customer_count
+      FROM dim_customer dc
+      WHERE dc.first_valid_paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND dc.first_valid_paid_at < TIMESTAMPTZ '2026-07-01 00:00:00+08:00'
+    tags: [new_customer_count, 新客, 半年]
+    dependent_metric_ids: [new_customer_count]
+    is_test_locked: false
+
+  - question: "各月的新客户数量趋势"
+    sql: |
+      SELECT
+        DATE_TRUNC('month', dc.first_valid_paid_at AT TIME ZONE 'Asia/Shanghai') AS month,
+        COUNT(DISTINCT dc.id) AS new_customer_count
+      FROM dim_customer dc
+      WHERE dc.first_valid_paid_at IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1
+    tags: [new_customer_count, 趋势, 月度]
+    dependent_metric_ids: [new_customer_count]
+    is_test_locked: false
+
+  - question: "2026 年活跃客户数是多少？"
+    sql: |
+      SELECT COUNT(DISTINCT fo.customer_id) AS active_customer_count
+      FROM fact_order fo
+      WHERE fo.order_status IN ('PAID', 'COMPLETED')
+        AND fo.is_test = false
+        AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+        AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+    tags: [active_customer_count, 2026]
+    dependent_metric_ids: [active_customer_count]
+    is_test_locked: false
+
+  - question: "2026 年复购率是多少？"
+    sql: |
+      WITH customer_orders AS (
+        SELECT fo.customer_id, COUNT(DISTINCT fo.id) AS order_count
+        FROM fact_order fo
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+          AND fo.paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND fo.paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+        GROUP BY fo.customer_id
+      )
+      SELECT
+        COUNT(DISTINCT CASE WHEN order_count >= 2 THEN customer_id END) AS repeat_customer_count,
+        COUNT(DISTINCT customer_id) AS active_customer_count,
+        COUNT(DISTINCT CASE WHEN order_count >= 2 THEN customer_id END)::FLOAT /
+          NULLIF(COUNT(DISTINCT customer_id), 0) AS repurchase_rate
+      FROM customer_orders
+    tags: [repurchase_rate, 复购率, CTE]
+    dependent_metric_ids: [repurchase_rate, repeat_customer_count, active_customer_count]
+    is_test_locked: false
+
+  - question: "华东区域新客户中，购买手机的比例是多少？"
+    sql: |
+      WITH east_china_new_customers AS (
+        SELECT DISTINCT dc.id AS customer_id
+        FROM dim_customer dc
+        WHERE dc.first_valid_paid_at >= TIMESTAMPTZ '2026-01-01 00:00:00+08:00'
+          AND dc.first_valid_paid_at < TIMESTAMPTZ '2027-01-01 00:00:00+08:00'
+      ),
+      phone_buyers AS (
+        SELECT DISTINCT fo.customer_id
+        FROM fact_order fo
+        JOIN fact_order_item foi ON foi.order_id = fo.id
+        JOIN dim_product dp ON dp.id = foi.product_id AND dp.is_current = true
+        JOIN dim_product_category dpc ON dpc.id = dp.category_id
+          AND dpc.category_name = 'Smartphone'
+        JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+        JOIN dim_city dc ON dc.id = ds.city_id
+        JOIN dim_region dr ON dr.id = dc.region_id AND dr.region_name = 'East China'
+        WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+      )
+      SELECT
+        COUNT(DISTINCT enc.customer_id) AS new_customer_count,
+        COUNT(DISTINCT CASE WHEN pb.customer_id IS NOT NULL THEN enc.customer_id END) AS phone_buyers,
+        COUNT(DISTINCT CASE WHEN pb.customer_id IS NOT NULL THEN enc.customer_id END)::FLOAT /
+          NULLIF(COUNT(DISTINCT enc.customer_id), 0) AS phone_buyer_ratio
+      FROM east_china_new_customers enc
+      LEFT JOIN phone_buyers pb ON pb.customer_id = enc.customer_id
+    tags: [new_customer_count, 手机, 比例, 华东, 多条件]
+    dependent_metric_ids: [new_customer_count]
+    is_test_locked: false
+
+  - question: "人均消费金额最高的前 5 个城市"
+    sql: |
+      SELECT
+        dc.city_name,
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.customer_id), 0) AS average_customer_revenue
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_store ds ON ds.id = fo.store_id AND ds.is_current = true
+      JOIN dim_city dc ON dc.id = ds.city_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+      GROUP BY dc.city_name
+      ORDER BY average_customer_revenue DESC
+      LIMIT 5
+    tags: [average_customer_revenue, 城市, 排名, Top5]
+    dependent_metric_ids: [average_customer_revenue]
+    is_test_locked: false
+
+  - question: "各会员等级的平均消费金额"
+    sql: |
+      SELECT
+        dml.level_name,
+        (SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0)) /
+          NULLIF(COUNT(DISTINCT fo.customer_id), 0) AS average_customer_revenue
+      FROM fact_order_item foi
+      JOIN fact_order fo ON fo.id = foi.order_id
+      JOIN dim_customer_membership dcm ON dcm.customer_id = fo.customer_id
+        AND dcm.is_current = true
+      JOIN dim_membership_level dml ON dml.id = dcm.level_id
+      LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED'
+      WHERE fo.order_status IN ('PAID', 'COMPLETED') AND fo.is_test = false
+      GROUP BY dml.level_name
+      ORDER BY average_customer_revenue DESC
+    tags: [average_customer_revenue, 会员等级]
+    dependent_metric_ids: [average_customer_revenue]
+    is_test_locked: false
