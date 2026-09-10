@@ -1002,3 +1002,84 @@ class TestBGERerankerEmptyCandidates:
             # a 得分 0.9 > b 得分 0.5，a 应排第一
             assert result[0].doc_id == "table:1:pub:a"
             assert result[0].score == 0.9
+
+    async def test_inspect_with_injected_retriever(self) -> None:
+        """注入 retriever / linker / join_graph 时，相关分支被覆盖。"""
+        import httpx
+        from unittest.mock import AsyncMock, MagicMock
+
+        from fastapi import FastAPI
+
+        from server.api.retrieval_workbench import router
+        from server.linking.join_graph import JoinGraphResult
+        from server.linking.schema import LinkType, SchemaLink, SchemaLinkResult
+        from server.search.repository import Candidate, CandidateSource
+        from server.search.retrieval import SchemaContext
+
+        fake_table = Candidate(
+            doc_id="table:1:pub:fact_order",
+            object_type="table",
+            score=0.9,
+            source=CandidateSource.RRF,
+            domain="sales",
+            datasource_id=1,
+            payload={"table_name": "fact_order", "business_name": "订单事实表"},
+        )
+        fake_col = Candidate(
+            doc_id="column:1:pub:fact_order:net_amount",
+            object_type="column",
+            score=0.8,
+            source=CandidateSource.RRF,
+            domain="sales",
+            datasource_id=1,
+            payload={"table_name": "fact_order", "column_name": "net_amount"},
+        )
+        fake_ctx = SchemaContext(tables=[fake_table], columns=[fake_col])
+
+        fake_retriever = MagicMock()
+        fake_retriever.retrieve = AsyncMock(return_value=fake_ctx)
+
+        fake_linker = MagicMock()
+        fake_linker.link.return_value = SchemaLinkResult(
+            links=[
+                SchemaLink(
+                    source_text="销售额",
+                    link_type=LinkType.METRIC,
+                    target_id="metric:net_sales",
+                    target_label="net_sales",
+                    confidence=0.95,
+                    evidence="alias",
+                )
+            ]
+        )
+
+        fake_join_graph = MagicMock()
+        fake_join_graph.complete_schema.return_value = JoinGraphResult(
+            complete_tables=["fact_order"],
+            paths={},
+            pre_aggregation_required=[],
+            missing_paths=[],
+        )
+
+        app = FastAPI()
+        app.include_router(router)
+        app.state.two_level_retriever = fake_retriever
+        app.state.schema_linker = fake_linker
+        app.state.join_graph = fake_join_graph
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),  # type: ignore[arg-type]
+            base_url="http://test",
+        ) as client:
+            response = await client.post(
+                "/api/v1/admin/retrieval/inspect",
+                json={"question": "今年销售额"},
+            )
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["reranked_tables"]) == 1
+        assert body["reranked_tables"][0]["table_name"] == "fact_order"
+        assert len(body["schema_links"]) == 1
+        assert body["schema_links"][0]["source_text"] == "销售额"
+        assert body["join_path"] is not None
+        assert "fact_order" in body["join_path"]["complete_tables"]
