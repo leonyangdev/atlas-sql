@@ -31,7 +31,7 @@ import logging
 from dataclasses import dataclass, field
 
 from server.domain.intent import FilterCondition, QueryIntent
-from server.search.repository import SearchRepository
+from server.search.repository import Candidate, SearchRepository
 from server.search.retrieval import SchemaContext
 
 logger = logging.getLogger(__name__)
@@ -291,15 +291,12 @@ class ValueLinker:
     def _parse_value_search_results(
         self,
         value_text: str,
-        candidates: list[object],
+        candidates: list[Candidate],
     ) -> list[TypedValue]:
         """将 search_values 的候选结果转换为 TypedValue。"""
-        from server.search.repository import Candidate as SearchCandidate
 
         results: list[TypedValue] = []
         for c in candidates:
-            if not isinstance(c, SearchCandidate):
-                continue
             if c.score < self._threshold:
                 continue
             table_name = c.payload.get("table_name", "")
