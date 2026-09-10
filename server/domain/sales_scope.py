@@ -268,6 +268,49 @@ _ALLOWED_COLUMNS: dict[str, frozenset[str]] = {
 
 ALLOWED_COLUMNS: Mapping[str, frozenset[str]] = MappingProxyType(_ALLOWED_COLUMNS)
 
+# 每张表的触发关键词。问题命中任意一个关键词就把该表纳入 schema 上下文。
+# 不在此列的词会触发保底回退逻辑（见 select_relevant_tables）。
+_TABLE_KEYWORDS: dict[str, frozenset[str]] = {
+    "dim_region": frozenset({"区域", "大区", "region"}),
+    "dim_city": frozenset({"城市", "市", "province", "城区"}),
+    "dim_store": frozenset({"门店", "店", "store", "旗舰店", "标准店", "奥莱"}),
+    "dim_sales_channel": frozenset({"渠道", "channel", "线上", "线下", "直播"}),
+    "dim_category": frozenset({"品类", "类目", "category", "品牌品类"}),
+    "dim_product": frozenset({"商品", "品", "product", "SPU", "spu"}),
+    "dim_sku": frozenset({"SKU", "sku", "规格", "颜色", "尺码", "单品"}),
+    "fact_order": frozenset({"订单", "order", "下单", "支付", "交易", "成交"}),
+    "fact_order_item": frozenset({"明细", "订单明细", "商品明细", "折扣", "优惠后", "税"}),
+    "fact_payment": frozenset({"支付方式", "付款", "payment", "支付渠道"}),
+    "fact_refund": frozenset({"退款", "退单", "refund", "退货"}),
+    "fact_refund_item": frozenset({"退款明细", "退货原因", "退款原因"}),
+    "order_status_history": frozenset({"状态变化", "状态历史", "流转", "操作记录"}),
+    "order_coupon_bridge": frozenset({"优惠券", "券", "coupon", "核销"}),
+    "sales_daily_aggregate": frozenset({"日销", "每日", "汇总", "聚合", "日期", "月", "周", "年", "同比", "环比"}),
+}
+
+# 这几张表是绝大多数销售查询的必要基础，始终纳入上下文。
+_ANCHOR_TABLES: frozenset[str] = frozenset({"fact_order", "dim_store"})
+
+
+def select_relevant_tables(question: str) -> frozenset[str]:
+    """根据问题关键词返回本次查询需要的表集合。
+
+    逻辑：
+    1. 始终包含锚定表（fact_order、dim_store）。
+    2. 问题中出现某表的任意关键词，就追加该表。
+    3. 若除锚定表外没有命中任何额外的表，说明问题较宽泛，回退到全量白名单，
+       确保不因过度裁剪导致漏发必要 schema。
+    """
+    matched: set[str] = set(_ANCHOR_TABLES)
+    for table_name, keywords in _TABLE_KEYWORDS.items():
+        if any(kw in question for kw in keywords):
+            matched.add(table_name)
+
+    # 只命中锚定表时回退全量，避免过度裁剪（如"各门店总销售额"这类简单问题）
+    if matched == _ANCHOR_TABLES:
+        return frozenset(_ALLOWED_COLUMNS.keys())
+    return frozenset(matched)
+
 # 指标草案来自 semantic_models/drafts/core_metrics.yaml。这里只登记 V1 的非受限 Sales 指标，
 # Prompt Builder 在 V1-S02 会读取完整定义；当前阶段只用于判断是否需要澄清。
 METRIC_ALIASES: Mapping[str, str] = MappingProxyType(

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 import httpx
+from langsmith import traceable
 
 
 class LLMErrorKind(enum.StrEnum):
@@ -40,6 +41,7 @@ class LLMRequest:
     """一次结构化文本生成请求。"""
 
     prompt: str
+    system_prompt: str
     prompt_hash: str
     response_schema: dict[str, object]
     max_output_tokens: int
@@ -106,12 +108,16 @@ class DeepSeekChatGateway:
             "thinking": False,
         }
 
+    @traceable(run_type="llm", name="deepseek-complete")
     async def complete(self, request: LLMRequest) -> LLMResponse:
         """调用 Chat Completions，并把 HTTP/结构异常收敛为类型化失败。"""
 
         payload: dict[str, object] = {
             "model": self._model,
-            "messages": [{"role": "user", "content": request.prompt}],
+            "messages": [
+                {"role": "system", "content": request.system_prompt},
+                {"role": "user", "content": request.prompt},
+            ],
             "max_tokens": request.max_output_tokens,
             "response_format": {"type": "json_object"},
             "thinking": {"type": "disabled"},
@@ -234,7 +240,7 @@ class FakeLLMGateway:
         if self.failures:
             raise self.failures.pop(0)
         # Fake token 数只用于测试记录链路，不代表任何真实 Provider 的计费方式。
-        input_tokens = max(1, len(request.prompt.encode("utf-8")) // 4)
+        input_tokens = max(1, (len(request.system_prompt.encode("utf-8")) + len(request.prompt.encode("utf-8"))) // 4)
         output_tokens = max(1, len(self.output_text.encode("utf-8")) // 4)
         return LLMResponse(
             output_text=self.output_text,

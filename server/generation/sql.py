@@ -105,10 +105,7 @@ class BaselineSQLGenerationPipeline:
             schema_version=context.schema_version,
             model_parameters=self._gateway.model_parameters,
         )
-        llm_request = LLMRequest(
-            prompt=package.text,
-            prompt_hash=package.prompt_hash,
-            response_schema=package.response_schema,
+        llm_request = package.to_llm_request(
             max_output_tokens=self._max_output_tokens,
             timeout_ms=context.timeout_ms,
         )

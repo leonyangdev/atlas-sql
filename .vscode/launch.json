@@ -32,11 +32,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "@atlas-sql/web"],
       "cwd": "${workspaceFolder}",
-      "serverReadyAction": {
-        "pattern": "Local:.*http://.*:([0-9]+)",
-        "uriFormat": "http://localhost:%s",
-        "action": "openExternally"
-      },
       "presentation": {
         "group": "1-individual",
         "order": 2
@@ -49,11 +44,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "@atlas-sql/admin"],
       "cwd": "${workspaceFolder}",
-      "serverReadyAction": {
-        "pattern": "Local:.*http://.*:([0-9]+)",
-        "uriFormat": "http://localhost:%s",
-        "action": "openExternally"
-      },
       "presentation": {
         "group": "1-individual",
         "order": 3
@@ -66,11 +56,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "cwd": "${workspaceFolder}/altassql-book",
-      "serverReadyAction": {
-        "pattern": "Local:.*http://.*:([0-9]+)",
-        "uriFormat": "http://localhost:%s",
-        "action": "openExternally"
-      },
       "presentation": {
         "group": "1-individual",
         "order": 4
