@@ -126,11 +126,24 @@ class QueryTrace(BaseModel):
 QueryCell = str | int | float | bool | None
 
 
+class MetricDefinitionBrief(BaseModel):
+    """查询结果中附带的指标定义简要信息（供前端展示口径说明）。"""
+
+    metric_id: str
+    label: str
+    expression: str
+    required_filters: list[str] = Field(default_factory=list)
+    time_role: str = "paid_at"
+    warning: str | None = None
+    time_rule_note: str | None = None
+
+
 class QueryResponse(BaseModel):
     """所有问数状态共用的响应体。
 
     未执行完成时 ``sql``、``columns`` 和 ``rows`` 保持空值，而不是伪造演示结果。结果行
     采用与列顺序一致的二维数组，避免重复携带列名。
+    ``metric_definitions`` 由 V3 Pipeline 填入，展示本次查询实际使用的指标口径。
     """
 
     question: str
@@ -146,4 +159,5 @@ class QueryResponse(BaseModel):
     summary: str | None = None
     referenced_tables: list[str] = Field(default_factory=list)
     referenced_columns: list[str] = Field(default_factory=list)
+    metric_definitions: list[MetricDefinitionBrief] = Field(default_factory=list)
     trace: QueryTrace

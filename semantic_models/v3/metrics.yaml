@@ -147,8 +147,11 @@ metrics:
     label: 客单价
     domain: sales
     grain: period
-    expression: "net_sales / NULLIF(paid_order_count, 0)"
-    required_filters: []
+    expression: "(SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)) / NULLIF(COUNT(DISTINCT fact_order.id), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_refund.refund_status = 'REFUNDED' WHEN refund rows are joined"
     dependent_columns: []
     time_role: paid_at
     zero_denominator_policy: null_with_reason
@@ -164,8 +167,10 @@ metrics:
     label: 件单价
     domain: sales
     grain: period
-    expression: "sales_quantity / NULLIF(paid_order_count, 0)"
-    required_filters: []
+    expression: "(SUM(fact_order_item.quantity) - COALESCE(SUM(fact_refund_item.refund_quantity), 0)) / NULLIF(COUNT(DISTINCT fact_order.id), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
     dependent_columns: []
     time_role: paid_at
     zero_denominator_policy: null_with_reason
@@ -212,7 +217,7 @@ metrics:
     label: 退款率
     domain: sales
     grain: period
-    expression: "refunded_amount / NULLIF(gross_paid_sales, 0)"
+    expression: "SUM(fact_refund_item.refund_amount WHERE fact_refund.refund_status='REFUNDED') / NULLIF(SUM(fact_order_item.net_amount WHERE fact_order.order_status IN ('PAID','COMPLETED') AND fact_order.is_test=false), 0)"
     required_filters: []
     dependent_columns: []
     time_role: paid_at
@@ -245,8 +250,10 @@ metrics:
     label: 折扣率
     domain: sales
     grain: period
-    expression: "discount_amount / NULLIF(discount_amount + net_sales, 0)"
-    required_filters: []
+    expression: "SUM(fact_order_item.discount_amount) / NULLIF(SUM(fact_order_item.discount_amount) + SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
     dependent_columns: []
     time_role: paid_at
     zero_denominator_policy: null_with_reason
@@ -349,8 +356,10 @@ metrics:
     label: 人均消费
     domain: customer
     grain: period
-    expression: "net_sales / NULLIF(active_customer_count, 0)"
-    required_filters: []
+    expression: "(SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)) / NULLIF(COUNT(DISTINCT fact_order.customer_id), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
     dependent_columns: []
     time_role: paid_at
     zero_denominator_policy: null_with_reason
@@ -368,11 +377,26 @@ metrics:
     label: 毛利额
     domain: finance
     grain: order_item
-    expression: "net_sales - recognized_cost"
-    required_filters: []
+    expression: "SUM(foi.net_amount - psb.purchase_unit_cost * foi.quantity)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
     dependent_columns:
       - "fact_order_item.net_amount"
-      - "fact_order_item.cost_amount"
+      - "fact_order_item.quantity"
+      - "fact_order_item.sku_id"
+      - "product_supplier_bridge.purchase_unit_cost"
+    time_role: paid_at
+    zero_denominator_policy: not_applicable
+    unit: CNY
+    currency: CNY
+    is_sensitive: true
+    synonyms:
+      - 毛利
+    time_rule_note: >
+      成本与销售使用相同业务期间；未入账成本期间数据不完整。
+      需要 JOIN product_supplier_bridge psb ON psb.sku_id = fact_order_item.sku_id
+      AND psb.is_primary_supplier = true AND psb.is_current = true。
     time_role: paid_at
     zero_denominator_policy: not_applicable
     unit: CNY
@@ -387,28 +411,43 @@ metrics:
     label: 毛利率
     domain: finance
     grain: period
-    expression: "SUM(gross_profit) / NULLIF(SUM(net_sales), 0)"
-    required_filters: []
-    dependent_columns: []
+    expression: "SUM(foi.net_amount - psb.purchase_unit_cost * foi.quantity) / NULLIF(SUM(foi.net_amount) - COALESCE(SUM(fri.refund_amount), 0), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fr.refund_status = 'REFUNDED' (通过 LEFT JOIN fact_refund fr ON fr.id = fri.refund_id)"
+    dependent_columns:
+      - "fact_order_item.net_amount"
+      - "fact_order_item.quantity"
+      - "fact_order_item.sku_id"
+      - "product_supplier_bridge.purchase_unit_cost"
+      - "fact_refund_item.refund_amount"
     time_role: paid_at
     zero_denominator_policy: null_with_reason
     is_sensitive: true
     synonyms:
       - 毛利润率
       - 毛利占比
-    time_rule_note: "分子和分母使用相同期间、币种和退款口径。"
-    warning: "禁止对明细行毛利率做简单平均（AVG），必须用 SUM(毛利)/SUM(销售额)。"
+    time_rule_note: >
+      分子（毛利额）和分母（净销售额）使用相同期间和退款口径。
+      需要 JOIN product_supplier_bridge psb ON psb.sku_id = foi.sku_id
+      AND psb.is_primary_supplier = true AND psb.is_current = true 获取成本。
+      退款通过 LEFT JOIN fact_refund_item fri ON fri.order_item_id = foi.id
+      LEFT JOIN fact_refund fr ON fr.id = fri.refund_id AND fr.refund_status = 'REFUNDED' 获取。
+    warning: "禁止对明细行毛利率做简单平均（AVG），必须用 SUM(净额-成本)/SUM(净额-退款)。"
 
   - id: recognized_cost
     label: 已入账成本
     domain: finance
     grain: order_item
-    expression: "SUM(fact_order_item.cost_amount)"
+    expression: "SUM(psb.purchase_unit_cost * foi.quantity)"
     required_filters:
       - "fact_order.order_status IN ('PAID', 'COMPLETED')"
       - "fact_order.is_test = false"
     dependent_columns:
-      - "fact_order_item.cost_amount"
+      - "fact_order_item.quantity"
+      - "fact_order_item.sku_id"
+      - "product_supplier_bridge.purchase_unit_cost"
     time_role: paid_at
     zero_denominator_policy: not_applicable
     unit: CNY
@@ -615,8 +654,11 @@ metrics:
     label: 营销 ROI
     domain: marketing
     grain: period
-    expression: "net_sales / NULLIF(marketing_spend, 0)"
-    required_filters: []
+    expression: "(SUM(fact_order_item.net_amount) - COALESCE(SUM(fact_refund_item.refund_amount), 0)) / NULLIF(SUM(fact_marketing_spend.amount), 0)"
+    required_filters:
+      - "fact_order.order_status IN ('PAID', 'COMPLETED')"
+      - "fact_order.is_test = false"
+      - "fact_marketing_spend.is_cancelled = false"
     dependent_columns: []
     time_role: event_at
     zero_denominator_policy: null_with_reason

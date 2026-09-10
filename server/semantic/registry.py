@@ -225,6 +225,43 @@ class SemanticRegistry:
             self._register(entry)
 
     @staticmethod
+    def load_from_yaml_no_db(yaml_path: Path) -> "SemanticRegistry":
+        """从 YAML 文件直接构造 SemanticRegistry，不需要数据库 Session。
+
+        同时支持 V0 草案格式（semantic_models/drafts/core_metrics.yaml）
+        和 V3 扩展格式（semantic_models/v3/metrics.yaml）。
+        用于 API 启动时将指标定义加载到内存，无需先写入数据库。
+
+        Args:
+            yaml_path: YAML 文件路径。
+
+        Returns:
+            已加载指标的 SemanticRegistry 实例。
+        """
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError(f"Invalid YAML format in {yaml_path}")
+
+        metrics_data = raw.get("metrics", [])
+        if not isinstance(metrics_data, list):
+            raise ValueError(f"'metrics' key must be a list in {yaml_path}")
+
+        registry = SemanticRegistry()
+        entries: list[MetricEntry] = []
+        for item in metrics_data:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            try:
+                entry = _entry_from_yaml_item(item)
+                entries.append(entry)
+            except (KeyError, ValueError) as exc:
+                logger.warning("Skipping malformed metric item id=%s: %s", item.get("id"), exc)
+
+        registry.load_from_entries(entries)
+        logger.info("SemanticRegistry loaded %d metrics from %s (no-db)", len(entries), yaml_path)
+        return registry
+
+    @staticmethod
     async def seed_from_yaml(yaml_path: Path, session: AsyncSession) -> int:  # pragma: no cover
         """从 YAML 文件批量 upsert MetricDefinition 草案。
 
@@ -454,3 +491,73 @@ def _infer_domain(metric_id: str) -> str:
         if keyword in lower:
             return domain
     return "sales"  # 默认归属销售域
+
+
+def _entry_from_yaml_item(item: dict) -> MetricEntry:
+    """直接从 YAML 字典条目构造 MetricEntry，不经过 ORM。
+
+    兼容 V0 草案格式（zero_denominator、time_rule、sensitivity）
+    和 V3 扩展格式（zero_denominator_policy、time_rule_note、is_sensitive）。
+    """
+    metric_id: str = item["id"]
+    label: str = item.get("label", metric_id)
+    domain: str = item.get("domain", _infer_domain(metric_id))
+    expression: str = item.get("expression", "")
+
+    # grain 兼容
+    grain_raw = item.get("grain", "period")
+    try:
+        grain = MetricGrain(grain_raw).value
+    except ValueError:
+        grain = "period"
+
+    # 时间角色兼容
+    time_role_raw = item.get("time_role", "paid_at")
+    try:
+        time_role = TimeRole(time_role_raw).value
+    except ValueError:
+        time_role = "paid_at"
+
+    # 分母策略兼容（V0 用 zero_denominator，V3 用 zero_denominator_policy）
+    zdp_raw = (
+        item.get("zero_denominator_policy")
+        or item.get("zero_denominator")
+        or "not_applicable"
+    )
+    try:
+        zdp = ZeroDenominatorPolicy(zdp_raw).value
+    except ValueError:
+        zdp = "not_applicable"
+
+    # 敏感度（V0 用 sensitivity: restricted，V3 用 is_sensitive: true）
+    is_sensitive = bool(
+        item.get("sensitivity") == "restricted" or item.get("is_sensitive", False)
+    )
+
+    # 同义词（确保 label 本身也在同义词列表里）
+    synonyms: list[str] = list(item.get("synonyms") or [])
+    if label not in synonyms:
+        synonyms = [label] + synonyms
+
+    # 时间规则说明（V0 用 time_rule，V3 用 time_rule_note）
+    time_rule_note = item.get("time_rule_note") or item.get("time_rule")
+
+    return MetricEntry(
+        metric_id=metric_id,
+        label=label,
+        domain=domain,
+        grain=grain,
+        expression=expression,
+        required_filters=list(item.get("required_filters") or []),
+        dependent_columns=list(item.get("dependent_columns") or []),
+        allowed_dimensions=list(item.get("allowed_dimensions") or []),
+        time_role=time_role,
+        zero_denominator_policy=zdp,
+        unit=item.get("unit"),
+        currency=item.get("currency"),
+        synonyms=synonyms,
+        is_sensitive=is_sensitive,
+        time_rule_note=time_rule_note,
+        warning=item.get("warning"),
+        version_number=0,  # YAML 加载视为未发布草案
+    )

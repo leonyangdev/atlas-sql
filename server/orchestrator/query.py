@@ -9,9 +9,13 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from server.semantic.registry import SemanticRegistry
 
 from server.domain.query import (
+    MetricDefinitionBrief,
     QueryColumn,
     QueryError,
     QueryErrorCode,
@@ -21,7 +25,7 @@ from server.domain.query import (
     QueryStatus,
     QueryTrace,
 )
-from server.domain.sales_scope import assess_sales_scope
+from server.domain.sales_scope import assess_scope, assess_sales_scope
 from server.query.repository import QueryRepository, QueryState
 
 
@@ -82,6 +86,7 @@ class QueryOrchestrator:
         model_version: str,
         timeout_ms: int,
         pipeline: QueryPipeline | None = None,
+        registry: "SemanticRegistry | None" = None,
     ) -> None:
         self._repository = repository
         self._data_version = data_version
@@ -89,6 +94,7 @@ class QueryOrchestrator:
         self._model_version = model_version
         self._timeout_ms = timeout_ms
         self._pipeline = pipeline
+        self._registry = registry  # V3 语义注册表，为 None 时回退 V1 静态映射
 
     async def submit(self, request: QueryRequest, identity: str) -> QueryResponse:
         """接收一次请求并返回当前状态。
@@ -113,7 +119,7 @@ class QueryOrchestrator:
         )
         try:
             await self._repository.create(state)
-            decision = assess_sales_scope(request.question)
+            decision = assess_scope(request.question, registry=self._registry)
             state = replace(
                 state,
                 status=decision.status,
@@ -125,7 +131,7 @@ class QueryOrchestrator:
             await self._repository.update(state)
 
             if decision.status != QueryStatus.PROCESSING or self._pipeline is None:
-                return response_from_state(state)
+                return response_from_state(state, registry=self._registry)
 
             context = QueryContext(
                 trace_id=state.trace_id,
@@ -162,7 +168,7 @@ class QueryOrchestrator:
                 updated_at=datetime.now(UTC),
             )
             await self._repository.update(state)
-            return response_from_state(state)
+            return response_from_state(state, registry=self._registry)
         except Exception:  # noqa: BLE001 -- 边界层必须把未知异常转换为安全响应
             failed = replace(
                 state,
@@ -175,7 +181,7 @@ class QueryOrchestrator:
                 await self._repository.update(failed)
             except Exception:  # noqa: BLE001 -- 原始失败优先，避免二次持久化覆盖安全响应
                 pass
-            return response_from_state(failed)
+            return response_from_state(failed, registry=self._registry)
 
     async def get(self, trace_id: uuid.UUID, identity: str) -> QueryResponse | None:
         """只允许请求身份读取自己的状态，避免用 trace_id 枚举他人请求。"""
@@ -183,15 +189,37 @@ class QueryOrchestrator:
         state = await self._repository.get(trace_id)
         if state is None or state.identity != identity:
             return None
-        return response_from_state(state)
+        return response_from_state(state, registry=self._registry)
 
 
-def response_from_state(state: QueryState) -> QueryResponse:
+def response_from_state(
+    state: QueryState,
+    registry: "SemanticRegistry | None" = None,
+) -> QueryResponse:
     """从内部快照构造稳定 API 契约。"""
 
     error = None
     if state.error_code is not None and state.error_message is not None:
         error = QueryError(code=state.error_code, message=state.error_message)
+
+    # 从注册表查询已用指标的定义简要信息
+    metric_defs: list[MetricDefinitionBrief] = []
+    if registry is not None:
+        for mid in state.metric_ids:
+            entry = registry.get(mid)
+            if entry:
+                metric_defs.append(
+                    MetricDefinitionBrief(
+                        metric_id=entry.metric_id,
+                        label=entry.label,
+                        expression=entry.expression,
+                        required_filters=entry.required_filters,
+                        time_role=entry.time_role,
+                        warning=entry.warning,
+                        time_rule_note=entry.time_rule_note,
+                    )
+                )
+
     trace = QueryTrace(
         trace_id=state.trace_id,
         identity=state.identity,
@@ -227,6 +255,7 @@ def response_from_state(state: QueryState) -> QueryResponse:
         execution_ms=state.execution_ms,
         referenced_tables=list(state.referenced_tables),
         referenced_columns=list(state.referenced_columns),
+        metric_definitions=metric_defs,
         summary=state.summary,
         trace=trace,
     )

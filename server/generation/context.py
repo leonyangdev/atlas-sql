@@ -227,13 +227,17 @@ class SemanticContextBuilder:
         """
         untrusted_fields: list[str] = []
 
-        # 1. 过滤越权指标（敏感指标默认不进入上下文）
-        safe_metrics = [
-            m for m in metric_entries
-            if not m.is_sensitive or (
-                self._allowed_domains and m.domain in self._allowed_domains
-            )
-        ]
+        # 1. 过滤越权指标
+        # allowed_domains 为 None 表示不限制（所有域均允许）
+        # 只有在 allowed_domains 明确设置且指标域不在其中时，才过滤敏感指标
+        if self._allowed_domains:
+            safe_metrics = [
+                m for m in metric_entries
+                if not m.is_sensitive or m.domain in self._allowed_domains
+            ]
+        else:
+            # allowed_domains=None：不做域过滤，所有指标（含敏感）均允许
+            safe_metrics = list(metric_entries)
         if len(safe_metrics) < len(metric_entries):
             filtered_count = len(metric_entries) - len(safe_metrics)
             logger.info(
@@ -241,7 +245,7 @@ class SemanticContextBuilder:
                 filtered_count,
             )
 
-        # 2. 过滤越权表/列（不在 allowed_domains 的域）
+        # 2. 过滤越权表/列（仅在 allowed_domains 明确设置时才过滤）
         safe_tables = []
         for c in schema_context.tables:
             if self._allowed_domains and c.domain and c.domain not in self._allowed_domains:

@@ -82,11 +82,14 @@ def test_sales_scope_recognizes_metric_draft() -> None:
     assert decision.metric_ids == ("net_sales",)
 
 
-def test_sales_scope_rejects_inventory_question() -> None:
+def test_sales_scope_no_longer_rejects_cross_domain_questions() -> None:
+    """V3 移除了跨域拦截黑名单，库存/财务等问题不再被拒绝，由语义层处理。"""
     decision = assess_sales_scope("查询各仓库的可用库存")
 
-    assert decision.status == QueryStatus.REJECTED
-    assert decision.error_code == QueryErrorCode.OUT_OF_SCOPE
+    # V3 起：不再 REJECTED，直接进入 PROCESSING
+    assert decision.status == QueryStatus.PROCESSING
+    # V1 静态映射可以识别"可用库存" → inventory_available_quantity
+    assert "inventory_available_quantity" in decision.metric_ids
 
 
 def test_sales_scope_requires_clarification_for_income() -> None:
@@ -139,18 +142,17 @@ async def test_orchestrator_passes_identity_versions_and_budget() -> None:
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_rejects_out_of_scope_before_pipeline() -> None:
+async def test_orchestrator_processes_cross_domain_question() -> None:
+    """V3 起，库存等跨域问题不再被 orchestrator 拒绝，而是进入 pipeline 处理。"""
     repository = InMemoryQueryRepository()
     pipeline = CapturingPipeline()
     orchestrator = make_orchestrator(repository, pipeline)
 
     response = await orchestrator.submit(QueryRequest(question="库存还有多少？"), "public")
 
-    assert response.status == QueryStatus.REJECTED
-    assert response.error is not None
-    assert response.error.code == QueryErrorCode.OUT_OF_SCOPE
-    assert pipeline.request is None
-    assert repository.records[response.trace_id].status == QueryStatus.REJECTED
+    # V3：不再 REJECTED，pipeline 被调用并返回成功
+    assert response.status == QueryStatus.SUCCEEDED
+    assert pipeline.request is not None
 
 
 class FailingPipeline:
@@ -250,6 +252,7 @@ async def test_query_api_rejects_invalid_question_and_out_of_scope_domain() -> N
 
     assert blank.status_code == 422
     assert overlong.status_code == 422
-    assert inventory.status_code == 200
-    assert inventory.json()["status"] == "rejected"
-    assert inventory.json()["error"]["code"] == "out_of_scope"
+    # V3 起：库存问题不再被拒绝，进入 pipeline 处理
+    assert inventory.status_code in (200, 202)
+    # 不再要求 rejected 状态
+    assert inventory.json()["status"] != "out_of_scope"

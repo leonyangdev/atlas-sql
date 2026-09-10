@@ -1,7 +1,11 @@
-"""V1 冻结的 Sales 查询范围。
+"""V1→V3 查询范围判断。
 
-V1 故意只暴露 15 张高频销售事实表和维度表。映射在代码中显式列出，schema 采集到新字段
-时不会自动扩权；要扩大范围必须修改本文件、评审并重新跑基线。机密字段同样默认排除。
+V3 起支持全域指标（Sales / Finance / Customer / Inventory / Marketing / Store），
+不再用黑名单拒绝财务、库存等跨域问题。
+`assess_scope()` 优先用 SemanticRegistry 的同义词表解析 metric_ids；
+在注册表为空（测试/降级）时回退到 V1 的 METRIC_ALIASES 静态映射。
+
+V1 接口（assess_sales_scope）保留向后兼容，内部委托给 assess_scope()。
 """
 
 from __future__ import annotations
@@ -9,8 +13,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import TYPE_CHECKING
 
 from server.domain.query import QueryErrorCode, QueryStatus
+
+if TYPE_CHECKING:
+    from server.semantic.registry import SemanticRegistry
 
 SALES_SCOPE_VERSION = "v1-sales-001"
 SALES_DATA_VERSION = "v0.1.0"
@@ -311,8 +319,12 @@ def select_relevant_tables(question: str) -> frozenset[str]:
         return frozenset(_ALLOWED_COLUMNS.keys())
     return frozenset(matched)
 
-# 指标草案来自 semantic_models/drafts/core_metrics.yaml。这里只登记 V1 的非受限 Sales 指标，
-# Prompt Builder 在 V1-S02 会读取完整定义；当前阶段只用于判断是否需要澄清。
+
+# ──────────────────────────────────────────────────────────────
+# V1 向后兼容静态映射（仅在 SemanticRegistry 为空时使用）
+# ──────────────────────────────────────────────────────────────
+
+# V1 时期的指标别名 + V3 新增别名，降级时使用
 METRIC_ALIASES: Mapping[str, str] = MappingProxyType(
     {
         "净销售额": "net_sales",
@@ -324,28 +336,22 @@ METRIC_ALIASES: Mapping[str, str] = MappingProxyType(
         "客单价": "average_order_value",
         "退款金额": "refunded_amount",
         "退款率": "refund_rate",
+        # V3 新增别名（降级时也能识别）
+        "毛利率": "gross_margin_rate",
+        "毛利额": "gross_profit",
+        "毛利": "gross_profit",
+        "新客户数": "new_customer_count",
+        "新客数": "new_customer_count",
+        "复购率": "repurchase_rate",
+        "活跃客户数": "active_customer_count",
+        "可用库存": "inventory_available_quantity",
+        "ROI": "roi",
     }
 )
 
-_OUT_OF_SCOPE_KEYWORDS = frozenset(
-    {
-        "库存",
-        "仓库",
-        "盘点",
-        "补货",
-        "调拨",
-        "营销",
-        "投放",
-        "触达",
-        "财务",
-        "会计",
-        "成本",
-        "毛利",
-        "利润",
-        "会员等级",
-        "客户标签",
-    }
-)
+# V3 起：不再有域级别的硬性拦截黑名单。
+# 语义层（SemanticRegistry）负责判断是否支持某指标，不能识别时让大模型尝试。
+# 仅保留真正需要澄清的歧义词（同一词在多个域有不同口径定义）。
 _AMBIGUOUS_METRIC_KEYWORDS = frozenset({"收入", "营收"})
 
 
@@ -359,32 +365,73 @@ class ScopeDecision:
     message: str | None = None
 
 
-def assess_sales_scope(question: str) -> ScopeDecision:
-    """用保守规则执行 V1 域边界和指标消歧。
+def assess_scope(
+    question: str,
+    registry: "SemanticRegistry | None" = None,
+) -> ScopeDecision:
+    """V3 多域范围判断，支持全部 40+ 个指标。
 
-    这不是意图分类器。它只负责挡住明确的非 Sales 范围，并对销售/财务都有含义的“收入”
-    请求澄清；其余问题交给后续固定 Schema 的生成链路。
+    优先用 SemanticRegistry 的同义词表解析 metric_ids；
+    registry 为 None 时回退到 METRIC_ALIASES 静态映射（V1 降级）。
+
+    不再拦截财务、库存、营销等跨域词；语义层负责找不到时返回提示。
+    仅对「同一词在销售域/财务域有不同口径」的歧义词触发澄清。
+
+    Args:
+        question: 用户原始问题文本。
+        registry: 已加载的 SemanticRegistry；None 使用 V1 静态映射。
     """
-
-    matched_domains = sorted(keyword for keyword in _OUT_OF_SCOPE_KEYWORDS if keyword in question)
-    if matched_domains:
-        return ScopeDecision(
-            status=QueryStatus.REJECTED,
-            error_code=QueryErrorCode.OUT_OF_SCOPE,
-            message="V1 仅支持固定 Sales 范围，不支持库存、财务等跨域查询。",
-        )
-
+    # 歧义词检测（不涉及域拦截）
     if any(keyword in question for keyword in _AMBIGUOUS_METRIC_KEYWORDS):
         return ScopeDecision(
             status=QueryStatus.CLARIFICATION_REQUIRED,
             error_code=QueryErrorCode.AMBIGUOUS_METRIC,
-            message="请确认你需要销售域的净销售额，还是财务域的入账收入。",
+            message=(
+                "「营收/收入」在销售域和财务域有不同口径，"
+                "请明确您想查询销售额（按支付时间）还是财务入账收入。"
+            ),
         )
 
-    metric_ids = tuple(
-        sorted({metric_id for alias, metric_id in METRIC_ALIASES.items() if alias in question})
-    )
+    metric_ids = _resolve_metric_ids(question, registry)
     return ScopeDecision(status=QueryStatus.PROCESSING, metric_ids=metric_ids)
+
+
+def assess_sales_scope(question: str) -> ScopeDecision:
+    """V1 向后兼容接口，委托给 assess_scope()（无注册表，使用静态映射）。
+
+    保留此函数避免破坏现有测试和调用方。
+    V3 查询流程通过 QueryOrchestrator 直接调用 assess_scope(question, registry)。
+    """
+    return assess_scope(question, registry=None)
+
+
+def _resolve_metric_ids(
+    question: str,
+    registry: "SemanticRegistry | None",
+) -> tuple[str, ...]:
+    """从问题文本中提取相关指标 ID。
+
+    优先级：
+    1. SemanticRegistry 同义词表（全部 V3 指标及其别名）
+    2. METRIC_ALIASES 静态映射（降级）
+    """
+    found: set[str] = set()
+
+    if registry is not None:
+        for entry in registry.all_metrics():
+            if entry.label and entry.label in question:
+                found.add(entry.metric_id)
+                continue
+            for syn in entry.synonyms:
+                if syn and syn in question:
+                    found.add(entry.metric_id)
+                    break
+    else:
+        for alias, metric_id in METRIC_ALIASES.items():
+            if alias in question:
+                found.add(metric_id)
+
+    return tuple(sorted(found))
 
 
 def is_allowed_column(table_name: str, column_name: str) -> bool:

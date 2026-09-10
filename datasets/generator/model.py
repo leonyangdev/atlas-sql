@@ -287,6 +287,24 @@ def fixture_rows() -> dict[str, list[dict[str, object]]]:
             }
         )
 
+    # product_supplier_bridge：每个 SKU 一条主供应商成本记录。
+    # purchase_unit_cost 设为 list_price 的 60%，模拟约 40% 毛利空间。
+    # 这是 V0 数据集里遗漏的成本数据，没有它毛利率查询无法运行。
+    rows["product_supplier_bridge"] = []
+    for sku_id in range(1, 7):
+        list_price = Decimal(20 + sku_id)
+        purchase_unit_cost = (list_price * Decimal("0.60")).quantize(Decimal("0.01"))
+        rows["product_supplier_bridge"].append(
+            base_row(sku_id, f"SUPPLIER-SKU-{sku_id:03d}")
+            | {
+                "sku_id": sku_id,
+                "supplier_code": "SUPPLIER-MAIN",
+                "is_primary_supplier": True,
+                "lead_time_days": 7,
+                "purchase_unit_cost": purchase_unit_cost,
+            }
+        )
+
     for customer_id in range(1, 21):
         rows["dim_customer"].append(
             base_row(customer_id, f"CUSTOMER-{customer_id:04d}")

@@ -65,7 +65,16 @@ class SQLValidationError(ValueError):
 
 
 class SQLValidator:
-    """验证单条只读 PostgreSQL 查询及其所有嵌套节点。"""
+    """验证单条只读 PostgreSQL 查询及其所有嵌套节点。
+
+    Args:
+        strict_scope: True（默认）= 使用 V1 表/列白名单；
+                      False = 仅校验语法和只读安全，不检查表/列范围。
+                      V3 Pipeline 使用 strict_scope=False，允许跨域表。
+    """
+
+    def __init__(self, strict_scope: bool = True) -> None:
+        self._strict_scope = strict_scope
 
     def validate(self, sql: str) -> ValidatedSQL:
         """解析并校验 SQL；任何未知结构均安全失败。"""
@@ -90,8 +99,14 @@ class SQLValidator:
 
         self._reject_write_nodes(statement)
         cte_names = {cte.alias_or_name for cte in statement.find_all(exp.CTE)}
-        tables, aliases = self._validate_tables(statement, cte_names)
-        columns = self._validate_columns(statement, aliases)
+        if self._strict_scope:
+            tables, aliases = self._validate_tables(statement, cte_names)
+            columns = self._validate_columns(statement, aliases)
+        else:
+            # 宽松模式（V3）：收集表名但不做白名单校验
+            tables = {t.name for t in statement.find_all(exp.Table) if t.name}
+            aliases = {t.alias_or_name: t.name for t in statement.find_all(exp.Table) if t.name}
+            columns: set[str] = set()
         self._validate_functions(statement)
         return ValidatedSQL(
             sql=statement.sql(dialect="postgres"),

@@ -4,14 +4,18 @@ import { FormEvent, useRef, useState } from "react";
 import { format } from "sql-formatter";
 
 const EXAMPLE_QUESTIONS = [
+  // Sales 域 — 有完整数据
   "各门店的总销售额是多少，按销售额从高到低排列",
   "2026 年上半年每个月的有效订单量是多少",
-  "退款金额最高的 5 个门店是哪些",
   "每个区域的有效订单量是多少",
-  "查询当前活跃客户的总数",
-  "列出所有退款订单的退款金额和原订单金额",
-  "查询每个城市的线上销售额（仅线上渠道）",
   "各门店 2026 年 Q1 的客单价是多少",
+  "退款率最高的 5 个品类是哪些",
+  "各品类销售数量排名",
+  // 跨域（V3）— 有真实数据支撑
+  "查询每个城市的线上销售额（仅线上渠道）",
+  "各仓库当前可用库存数量",
+  "2026 年各月订单量趋势",
+  "退款金额最高的 5 个门店是哪些",
 ] as const;
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
@@ -28,6 +32,17 @@ interface QueryColumn {
   data_type: string;
 }
 
+/** V3 指标定义简要信息，由后端 SemanticRegistry 注入 */
+interface MetricDefinitionBrief {
+  metric_id: string;
+  label: string;
+  expression: string;
+  required_filters: string[];
+  time_role: string;
+  warning: string | null;
+  time_rule_note: string | null;
+}
+
 interface QueryResult {
   question: string;
   session_id: string;
@@ -42,6 +57,7 @@ interface QueryResult {
   summary: string | null;
   referenced_tables: string[];
   referenced_columns: string[];
+  metric_definitions: MetricDefinitionBrief[];
 }
 
 function sessionId(): string {
@@ -62,7 +78,6 @@ async function requestQuery(question: string): Promise<QueryResult> {
   if (!response.ok) throw new Error(`请求失败（HTTP ${response.status}）`);
   let result = (await response.json()) as QueryResult;
 
-  // 当前 V1 通常同步完成；保留有限轮询以兼容后续异步执行，且不会产生重复提交。
   for (let attempt = 0; result.status === "processing" && attempt < 30; attempt += 1) {
     await new Promise((resolve) => window.setTimeout(resolve, 1_000));
     const polled = await fetch(`${API_BASE}/api/v1/query/${result.trace_id}`, {
@@ -91,7 +106,6 @@ function formatCell(value: string | number | boolean | null, type: string): stri
       }).format(parsed);
     }
   }
-  // numeric/decimal 在后端以字符串返回；这里不转成 JS Number，避免金额精度损失。
   return String(value);
 }
 
@@ -100,6 +114,35 @@ function statusTitle(result: QueryResult): string {
   if (result.status === "rejected") return "当前范围暂不支持";
   if (result.status === "failed") return "查询没有完成";
   return "正在处理";
+}
+
+/** 渲染指标口径说明卡片 */
+function MetricDefinitionCard({ metric }: { metric: MetricDefinitionBrief }) {
+  return (
+    <div className="metric-card">
+      <div className="metric-header">
+        <span className="metric-label">{metric.label}</span>
+        <code className="metric-id">{metric.metric_id}</code>
+      </div>
+      <pre className="metric-expression">{metric.expression}</pre>
+      {metric.required_filters.length > 0 && (
+        <div className="metric-filters">
+          <span className="metric-filters-title">强制过滤</span>
+          <ul>
+            {metric.required_filters.map((f, i) => (
+              <li key={i}><code>{f}</code></li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {metric.time_rule_note && (
+        <p className="metric-time-note">⏱ {metric.time_rule_note}</p>
+      )}
+      {metric.warning && (
+        <p className="metric-warning">⚠️ {metric.warning}</p>
+      )}
+    </div>
+  );
 }
 
 export default function DataAnalystHome() {
@@ -131,7 +174,6 @@ export default function DataAnalystHome() {
 
   async function fillExample(text: string) {
     setQuestion(text);
-    // 填入后立即提交，省去再点一次按钮的步骤
     setSubmitting(true);
     setNetworkError(null);
     setResult(null);
@@ -151,9 +193,11 @@ export default function DataAnalystHome() {
   return (
     <main>
       <header>
-        <p className="eyebrow">ATLASSQL / SALES BASELINE</p>
-        <h1>用一句话查询销售数据</h1>
-        <p className="lead">V1 支持固定 Sales 数据范围。结果、SQL 和数据来源可以相互核对。</p>
+        <p className="eyebrow">ATLASSQL / V3 语义问数</p>
+        <h1>用一句话查询业务数据</h1>
+        <p className="lead">
+          V3 支持全域指标查询（销售、财务、客户、库存、营销）。指标口径版本化管理，SQL 生成遵循统一业务规则。
+        </p>
       </header>
 
       <form onSubmit={submit} className="query-form">
@@ -176,7 +220,7 @@ export default function DataAnalystHome() {
           value={question}
           maxLength={2000}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="例如：2026 年上半年的有效订单量是多少？"
+          placeholder="例如：2026 年上半年各品类毛利率是多少？"
           disabled={submitting}
         />
         <div className="form-footer">
@@ -235,6 +279,21 @@ export default function DataAnalystHome() {
           )}
           {result.truncated && (
             <p className="notice">结果已达到返回上限，仅显示前 {result.rows.length} 行。</p>
+          )}
+
+          {/* V3：指标口径说明 */}
+          {result.metric_definitions.length > 0 && (
+            <details className="metric-definitions-section">
+              <summary>
+                查看指标口径说明
+                <span className="metric-count">{result.metric_definitions.length} 个指标</span>
+              </summary>
+              <div className="metric-definitions-list">
+                {result.metric_definitions.map((m) => (
+                  <MetricDefinitionCard key={m.metric_id} metric={m} />
+                ))}
+              </div>
+            </details>
           )}
 
           <details>

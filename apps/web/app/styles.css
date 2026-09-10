@@ -45,3 +45,21 @@ code { font-family: "SFMono-Regular", Consolas, monospace; }
 .chip { padding: 6px 13px; border-radius: 20px; background: #eef7f5; color: #0f5f55; font-size: 13px; font-weight: 500; border: 1px solid #b7e5dd; transition: background .15s, border-color .15s; white-space: normal; text-align: left; line-height: 1.4; }
 .chip:hover:not(:disabled) { background: #d1f0ea; border-color: #0f766e; }
 .chip:disabled { opacity: .45; cursor: not-allowed; }
+
+/* V3 指标口径说明卡片 */
+.metric-definitions-section { margin-top: 22px; border-top: 1px solid #e3e9ed; padding-top: 18px; }
+.metric-definitions-section summary { cursor: pointer; color: #0f6a61; font-weight: 650; display: flex; align-items: center; gap: 10px; }
+.metric-count { font-size: 12px; font-weight: 500; background: #eef7f5; color: #0f5f55; border: 1px solid #b7e5dd; border-radius: 12px; padding: 2px 9px; }
+.metric-definitions-list { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+.metric-card { border: 1px solid #e0e7ec; border-radius: 10px; padding: 14px 16px; background: #f9fbfc; }
+.metric-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.metric-label { font-weight: 700; font-size: 15px; color: #172033; }
+.metric-id { font-size: 12px; color: #657383; background: #eef1f5; padding: 2px 8px; border-radius: 6px; }
+.metric-expression { margin: 0 0 8px; font-size: 12.5px; line-height: 1.6; background: #102a2c; color: #d7f1eb; padding: 10px 12px; border-radius: 7px; overflow-x: auto; white-space: pre-wrap; }
+.metric-filters { margin-bottom: 8px; }
+.metric-filters-title { font-size: 12px; font-weight: 650; color: #5b6878; display: block; margin-bottom: 4px; }
+.metric-filters ul { margin: 0; padding-left: 16px; }
+.metric-filters li { font-size: 12.5px; color: #40505e; line-height: 1.7; }
+.metric-filters code { font-size: 12px; color: #0f5f55; background: #eef7f5; padding: 1px 5px; border-radius: 4px; }
+.metric-time-note { margin: 4px 0 0; font-size: 12.5px; color: #5b6878; line-height: 1.6; }
+.metric-warning { margin: 6px 0 0; font-size: 12.5px; color: #8a5c00; background: #fffbea; border: 1px solid #f0c040; border-radius: 6px; padding: 6px 10px; line-height: 1.6; }

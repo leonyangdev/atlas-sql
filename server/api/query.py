@@ -35,6 +35,7 @@ async def get_query_orchestrator(
         return cast(QueryOrchestrator, injected)
     settings = request.app.state.settings
     pipeline = request.app.state.query_pipeline
+    registry = getattr(request.app.state, "semantic_registry", None)
     return QueryOrchestrator(
         SQLAlchemyQueryRepository(session),
         data_version=settings.query_data_version,
@@ -42,6 +43,7 @@ async def get_query_orchestrator(
         model_version=pipeline.model_version,
         timeout_ms=settings.query_timeout_ms,
         pipeline=pipeline,
+        registry=registry,
     )
 
 

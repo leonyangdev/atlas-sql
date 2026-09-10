@@ -14,7 +14,6 @@ from fastapi.responses import JSONResponse
 
 from server.config import Settings, get_settings
 from server.db import create_control_engine, create_session_factory
-from server.generation.factory import create_sql_generation_pipeline
 from server.health import DependencyChecker, HealthChecker
 from server.orchestrator.query import QueryOrchestrator
 
@@ -33,8 +32,23 @@ def create_app(
     """
 
     runtime_settings = settings or get_settings()
-    query_pipeline = create_sql_generation_pipeline(runtime_settings)
     engine = create_control_engine(runtime_settings.control_database_url)
+
+    # 启动时从 YAML 加载语义注册表（不需要 DB）
+    from pathlib import Path
+    from server.semantic.registry import SemanticRegistry
+    _V3_YAML = Path(__file__).resolve().parents[2] / "semantic_models" / "v3" / "metrics.yaml"
+    try:
+        semantic_registry = SemanticRegistry.load_from_yaml_no_db(_V3_YAML)
+    except Exception:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "Failed to load V3 metrics YAML, falling back to empty registry"
+        )
+        semantic_registry = SemanticRegistry()
+
+    from server.generation.factory import create_v3_pipeline
+    query_pipeline = create_v3_pipeline(runtime_settings, semantic_registry)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -74,6 +88,7 @@ def create_app(
     app.state.health_checker = health_checker or DependencyChecker(runtime_settings)
     app.state.query_orchestrator = query_orchestrator
     app.state.query_pipeline = query_pipeline
+    app.state.semantic_registry = semantic_registry
 
     # 控制库 ORM 引擎与 session 工厂
     app.state.db_engine = engine
