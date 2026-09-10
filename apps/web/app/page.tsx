@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
+import { format } from "sql-formatter";
 
 const EXAMPLE_QUESTIONS = [
   "各门店的总销售额是多少，按销售额从高到低排列",
@@ -238,7 +239,7 @@ export default function DataAnalystHome() {
 
           <details>
             <summary>查看 SQL 与数据来源</summary>
-            <pre><code>{result.sql}</code></pre>
+            <pre><code>{result.sql ? format(result.sql, { language: "sql", tabWidth: 2 }) : ""}</code></pre>
             <dl>
               <div><dt>表</dt><dd>{result.referenced_tables.join("、") || "无"}</dd></div>
               <div><dt>字段</dt><dd>{result.referenced_columns.join("、") || "无"}</dd></div>
