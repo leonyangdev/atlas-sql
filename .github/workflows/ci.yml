@@ -30,9 +30,7 @@ jobs:
           uv run python scripts/build_business_migration.py
           git diff --exit-code -- datasets/dictionary datasets/business_migrations
       - name: Pytest
-        # 当前阈值 75%：V0 datasource/metadata 路由和 V1 execution/repository 尚未补齐集成测试。
-        # V2 完成 Schema 召回后须提升至 85%，届时同步删除此注释。
-        run: uv run pytest --cov=server --cov-report=term-missing --cov-fail-under=75
+        run: uv run pytest --cov=server --cov-report=term-missing --cov-fail-under=85
 
   frontends:
     runs-on: ubuntu-latest

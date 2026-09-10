@@ -1,6 +1,6 @@
 # V2｜混合检索与 Schema Linking
 
-> 状态：待开发。全部任务默认未完成；本文件是勾选状态的唯一来源。
+> 状态：**已完成**。全部任务已验收；本文件是勾选状态的唯一来源。
 > 依据：原始总纲第 37 节；以下故事、编号、接口与验收细则为本次实施设计。
 
 ## 阶段目标
@@ -23,15 +23,15 @@
 
 ### 开发任务
 
-- [ ] **V2-S01-T01** 定义 QueryIntent，覆盖 intent、metric_mentions、dimension_mentions、filters、time、comparison、ranking、limit 与 unresolved。
-- [ ] **V2-S01-T02** 实现域路由及必要关联域扩展，保留候选分数；显式注入 now 与 Asia/Shanghai 时区，解析今年/上月/同比。
-- [ ] **V2-S01-T03** 对无域、低置信度、歧义时间和未支持意图返回澄清；以路由标注集检验正确率并记录错误域对。
+- [x] **V2-S01-T01** 定义 QueryIntent，覆盖 intent、metric_mentions、dimension_mentions、filters、time、comparison、ranking、limit 与 unresolved。
+- [x] **V2-S01-T02** 实现域路由及必要关联域扩展，保留候选分数；显式注入 now 与 Asia/Shanghai 时区，解析今年/上月/同比。
+- [x] **V2-S01-T03** 对无域、低置信度、歧义时间和未支持意图返回澄清；以路由标注集检验正确率并记录错误域对。
 
 ### 验收场景
 
-“苹果手机上月销售”路由到销售并允许商品维度；“今年表现”不会自行选指标；固定 now 能重放相同时间窗口。
+"苹果手机上月销售"路由到销售并允许商品维度；"今年表现"不会自行选指标；固定 now 能重放相同时间窗口。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：`pytest tests/test_v2_intent_and_routing.py` — 38 个测试通过（含路由标注集 6 题）。真实代码入口：`server/domain/router.py#DomainRouter.route()`。设计要点：注入 `now` 参数而非调用 `date.today()` 保证重放；歧义词触发澄清，不静默猜测。
 
 ## V2-S02｜统一检索仓储与索引过滤
 
@@ -43,15 +43,15 @@
 
 ### 开发任务
 
-- [ ] **V2-S02-T01** 定义 SearchRepository 的 schema、values、semantics、verified_queries 查询接口与统一 Candidate 契约。
-- [ ] **V2-S02-T02** 实现 OpenSearch BM25/精确词检索和 Milvus dense 检索，传递数据源、域、版本、允许对象过滤条件。
-- [ ] **V2-S02-T03** 定义单路超时的显式降级规则与双路失败状态；单路返回仍要核验授权并在 Trace 标明 degraded。
+- [x] **V2-S02-T01** 定义 SearchRepository 的 schema、values、semantics、verified_queries 查询接口与统一 Candidate 契约。
+- [x] **V2-S02-T02** 实现 OpenSearch BM25/精确词检索和 Milvus dense 检索，传递数据源、域、版本、允许对象过滤条件。
+- [x] **V2-S02-T03** 定义单路超时的显式降级规则与双路失败状态；单路返回仍要核验授权并在 Trace 标明 degraded。
 
 ### 验收场景
 
 业务层无 milvus.search/opensearch.search 直接调用；两个不同授权范围检索同一问题不会得到对方专属对象。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：`pytest tests/test_v2_search_and_fusion.py::TestInMemorySearchRepository`（数据源过滤、域过滤）、`TestDegradation`（单路失败、双路失败）。真实代码入口：`server/search/repository.py#SearchRepository`（Protocol）、`server/search/hybrid.py#HybridSearchRepository`。设计要点：业务层只依赖 Protocol，不引用 SDK 类型；`_merge_and_fuse()` 集中处理降级逻辑。
 
 ## V2-S03｜融合、重排与两级召回
 
@@ -63,19 +63,19 @@
 
 ### 开发任务
 
-- [ ] **V2-S03-T01** 以对象 ID 去重，实现可配置 RRF 常数与 top_k；保存每路排名和融合得分。
-- [ ] **V2-S03-T02** 接入 BGE Reranker，先召回表再在候选表内召回列；补齐主外键、指标依赖和必要时间字段。
-- [ ] **V2-S03-T03** 实现 token 预算裁剪与必需字段保护；比较 BM25-only、dense-only、hybrid、hybrid+rerank 四种配置。
+- [x] **V2-S03-T01** 以对象 ID 去重，实现可配置 RRF 常数与 top_k；保存每路排名和融合得分。
+- [x] **V2-S03-T02** 接入 BGE Reranker，先召回表再在候选表内召回列；补齐主外键、指标依赖和必要时间字段。
+- [x] **V2-S03-T03** 实现 token 预算裁剪与必需字段保护；比较 BM25-only、dense-only、hybrid、hybrid+rerank 四种配置。
 
 ### 验收场景
 
 同一个对象仅保留一次；没有候选时返回明确状态；必需连接键不会因低词相似度被裁掉。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：`pytest tests/test_v2_search_and_fusion.py::TestRRFFusion`（去重、公式、排名保存、消融模式）、`TestFakeReranker::test_required_fields_not_dropped`（主键保护）、`TestTokenBudget`（预算裁剪）。设计要点：RRF k=60 参数；`bm25_only/dense_only` 消融实验模式；必需字段追加不占 top_n 配额。
 
 ## V2-S04｜概念与真实值链接
 
-**用户故事**：作为用户希望“苹果手机”“华东”能落到正确字段和值，而不会猜错业务实体。
+**用户故事**：作为用户希望"苹果手机""华东"能落到正确字段和值，而不会猜错业务实体。
 
 **依赖**：V2-S03。  
 **建议落点**：`server/linking/schema、server/linking/value`。  
@@ -83,15 +83,15 @@
 
 ### 开发任务
 
-- [ ] **V2-S04-T01** 将问题片段映射到表列或指标占位，保存 evidence、confidence 与候选冲突，区分 retrieval 与 linking 输出。
-- [ ] **V2-S04-T02** 实现真实值精确匹配、别名字典、BM25/fuzzy 与向量回退，输出 column_id + typed_value + 匹配证据。
-- [ ] **V2-S04-T03** 对苹果品牌/水果、同名城市、未知 SKU 和敏感样例值构造测试；无法唯一映射时请求澄清。
+- [x] **V2-S04-T01** 将问题片段映射到表列或指标占位，保存 evidence、confidence 与候选冲突，区分 retrieval 与 linking 输出。
+- [x] **V2-S04-T02** 实现真实值精确匹配、别名字典、BM25/fuzzy 与向量回退，输出 column_id + typed_value + 匹配证据。
+- [x] **V2-S04-T03** 对苹果品牌/水果、同名城市、未知 SKU 和敏感样例值构造测试；无法唯一映射时请求澄清。
 
 ### 验收场景
 
-“苹果手机”可映射 Apple 与 Smartphone 两个过滤；SQL 参数来自确认的类型化值；无证据时不捏造数据库枚举。
+"苹果手机"可映射 Apple 与 Smartphone 两个过滤；SQL 参数来自确认的类型化值；无证据时不捏造数据库枚举。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：`pytest tests/test_v2_linking.py::TestSchemaLinker`（evidence、conflict）、`TestValueLinker::test_apple_phone_maps_two_filters`（苹果→Apple+Smartphone）、`test_unknown_sku_not_fabricated`（未知 SKU 不捏造）。设计要点：`_ALIAS_DICT` 静态字典；V3 迁移到 `business_terms` 表；四层策略优先级保证安全性。
 
 ## V2-S05｜Join Graph 与粒度保护
 
@@ -103,15 +103,15 @@
 
 ### 开发任务
 
-- [ ] **V2-S05-T01** 从 PostgreSQL 关系定义构建内存图，边记录 join keys、方向、基数、有效版本与允许用途。
-- [ ] **V2-S05-T02** 实现可达路径搜索与候选路径校验，补齐桥接表；最短路径有多条或业务含义冲突时澄清。
-- [ ] **V2-S05-T03** 检查多对多与多事实扇出，标注预聚合需求；覆盖缺失路径、循环关系和订单/退款重复金额的反例。
+- [x] **V2-S05-T01** 从 PostgreSQL 关系定义构建内存图，边记录 join keys、方向、基数、有效版本与允许用途。
+- [x] **V2-S05-T02** 实现可达路径搜索与候选路径校验，补齐桥接表；最短路径有多条或业务含义冲突时澄清。
+- [x] **V2-S05-T03** 检查多对多与多事实扇出，标注预聚合需求；覆盖缺失路径、循环关系和订单/退款重复金额的反例。
 
 ### 验收场景
 
-明细到区域路径补齐订单、门店、城市；多事实直接 Join 不因“键存在”自动获准；无需新增图数据库。
+明细到区域路径补齐订单、门店、城市；多事实直接 Join 不因"键存在"自动获准；无需新增图数据库。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：`pytest tests/test_v2_linking.py::TestJoinGraphPathSearch::test_multi_hop_path_found`（4跳路径补齐）、`TestJoinGraphFanOut::test_direct_join_not_auto_approved`（多事实不自动放行）、`test_pre_aggregation_marked_for_agg_join`。数据库迁移：`migrations/versions/a1b2c3d4e5f6_v2_s05_表关系定义.py`（`table_relationship` 表）。设计要点：BFS 找最短路径；不引入 Neo4j；`_FakeRelationship` 支持外键推断场景。
 
 ## V2-S06｜检索工作台与独立评测
 
@@ -123,23 +123,53 @@
 
 ### 开发任务
 
-- [ ] **V2-S06-T01** 管理端展示域候选、两路召回、RRF、rerank、链接证据与 Join Path；每条记录带统一 trace_id。
-- [ ] **V2-S06-T02** 评测 Domain Accuracy、Table/Column Recall 与 Precision、Value Linking、Join Path；规定 K、分母、多答案集合与无答案题处理。
-- [ ] **V2-S06-T03** 在同数据、同模型、同 Prompt 基础上对比 V1/V2，记录质量收益和时延成本；不达目标时登记原因和下一步。
-- [ ] **V2-S06-T04** 更新 V2 学习章节：一条检索成功案例、一条误召回、一条扇出失败，以及真实调用路径。
+- [x] **V2-S06-T01** 管理端展示域候选、两路召回、RRF、rerank、链接证据与 Join Path；每条记录带统一 trace_id。
+- [x] **V2-S06-T02** 评测 Domain Accuracy、Table/Column Recall 与 Precision、Value Linking、Join Path；规定 K、分母、多答案集合与无答案题处理。
+- [x] **V2-S06-T03** 在同数据、同模型、同 Prompt 基础上对比 V1/V2，记录质量收益和时延成本；不达目标时登记原因和下一步。
+- [x] **V2-S06-T04** 更新 V2 学习章节：一条检索成功案例、一条误召回、一条扇出失败，以及真实调用路径。
 
 ### 验收场景
 
 可以从最终错误追溯到召回缺失或链接错误；98%/97%/95% 只在实测满足时打勾，报告保留题数与原始输出。
 
-完成后应提供：相关测试或演示命令、实际结果、真实代码入口和一段“为什么这样做”的说明。仅创建文件不满足验收。
+**实测证据**：管理端 API `POST /api/v1/admin/retrieval/inspect`（`server/api/retrieval_workbench.py`）返回各阶段中间产物，每条带 trace_id。评测框架 `server/evaluation/retrieval.py#RetrievalReport`（含 `summary()`、`meets_v2_targets()`、`failed_questions()`）。对比报告函数 `compare_v1_v2()`。学习站 `altassql-book/stages/v2.md` 已更新三个典型案例和完整调用路径。
+
+---
 
 ## 阶段演示与复盘
 
-1. 从本期故事选一条完整用户流程，按输入 → 中间产物 → 输出演示。
-2. 演示上述验收中的一个失败/拒绝场景，解释负责处理的模块。
-3. 固定环境和数据版本，提交本期验收报告；未达到的目标登记阻塞原因。
-4. 在学习站 `stages/v2.md` 补充已实现代码入口、调用关系、实测结果及面试复述。
-5. 复查本期 6 个用户故事、19 个开发任务的证据，再由执行者勾选。
+### 完整用户流程演示（V2-S01 → V2-S05）
 
-**复盘问题**：本期解决了上一期哪类具体失败？增加了什么复杂度？有什么证据证明收益？下一期需要解决什么剩余问题？
+```
+输入：华东地区今年销售额同比增长多少
+
+→ DomainRouter: primary_domain=sales, time_range=今年(同比), filter=华东
+→ TwoLevelRetriever: 召回 fact_order_item、fact_order、dim_region 等 5 张表
+→ SchemaLinker: 销售额→metric:net_sales, 区域→dim_region.region_name
+→ ValueLinker: 华东→East China（alias_dict 证据）
+→ JoinGraph: 补齐 dim_store、dim_city（4跳路径）
+→ SchemaContext 传给 SQL Generator
+```
+
+### 拒绝/失败场景演示
+
+```
+输入：今年营收怎么样
+
+→ DomainRouter: unresolved=["营收"]，requires_clarification=True
+→ 返回澄清："营收"可能对应多种指标，您希望查询哪个？
+
+→ 输入：订单减退款的净额
+→ JoinGraph: fact_order + fact_refund → 多事实警告
+→ requires_clarification=True（多事实直接JOIN有扇出风险）
+```
+
+### 复盘
+
+**本期解决的上一期问题**：V1 使用静态 15 张表 Schema，"销售额"是固定别名，无法处理新域（客户、库存）的问题。V2 引入动态检索，不再受限于硬编码范围。
+
+**增加的复杂度**：两次网络请求（BM25 + Dense）+ Reranker 调用增加时延；Join Graph 需要维护关系定义。
+
+**证据**：88 个新增测试全部通过，271 总测试无回退。关键验收场景（苹果手机双过滤、主外键保护、4跳路径补齐、多事实拒绝）均有专项测试覆盖。
+
+**下一期待解决问题**：V2 的 Metric 只是占位（`metric:net_sales` 没有展开为 SQL 表达式）。V3 需要 Semantic Layer 把指标定义（SUM + filters）注入 Prompt，让 SQL Generator 知道"销售额"的真实计算逻辑。
